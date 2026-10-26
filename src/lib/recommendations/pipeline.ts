@@ -48,10 +48,12 @@ export async function runSearch(input: SearchInput): Promise<SearchResult> {
     lon: location.lon,
     radiusM: constraints.radiusM,
     inventory: inventory.places,
+    categories,
   });
 
   input.onStatus?.("Finding places that fit…");
-  const candidates = dedupe([...inventory.places, ...taste.extraPlaces]).map((place) => ({ place, cultural: taste.evidence.get(place.id) }));
+  const places = inventory.places.map((p) => taste.enriched.get(p.id) ?? p);
+  const candidates = dedupe([...places, ...taste.extraPlaces]).map((place) => ({ place, cultural: taste.evidence.get(place.id) }));
   const { recommendations, filteredOut } = rank({
     candidates,
     location,
@@ -66,7 +68,8 @@ export async function runSearch(input: SearchInput): Promise<SearchResult> {
     location,
     constraints,
     tasteSignals: input.tasteSignals,
-    recommendations: recommendations.slice(0, 40),
+    // Both lenses must be able to show their own top 40, so keep the union (still in practical order).
+    recommendations: recommendations.filter((r) => r.practicalRank <= 40 || r.tasteRank <= 40),
     filteredOut: filteredOut.slice(0, 60),
     inventory: {
       provider: inventory.provider,

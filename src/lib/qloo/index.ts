@@ -59,33 +59,79 @@ const tokens = (s: string) =>
       .filter((t) => t && !STOP.has(t)),
   );
 
+const GENERIC = new Set(["books", "bookstore", "coffee", "tea", "library", "park", "garden", "gallery", "museum", "records", "bakery", "bar", "shop", "store", "studio"]);
+
 export function namesMatch(a: string, b: string) {
   const ta = tokens(a), tb = tokens(b);
   if (!ta.size || !tb.size) return false;
   const [small, big] = ta.size <= tb.size ? [ta, tb] : [tb, ta];
+  // A generic one-word name ("Books", "Coffee") says nothing about which venue it is.
+  if (small.size === 1 && big.size > 1 && GENERIC.has([...small][0])) return false;
   let hit = 0;
   for (const t of small) if (big.has(t)) hit++;
   return hit / small.size >= 0.75;
 }
 
-const QLOO_TAG_CATEGORY: [RegExp, PlaceCategory][] = [
-  [/tea ?(house|room|shop)|bubble tea/i, "tea"],
-  [/coffee|cafe|café|espresso/i, "cafe"],
-  [/book ?store|bookshop|book shop/i, "bookstore"],
-  [/library/i, "library"],
-  [/art gallery|gallery/i, "gallery"],
-  [/museum/i, "museum"],
-  [/botanical|garden/i, "garden"],
-  [/\bpark\b/i, "park"],
-  [/cinema|movie theater|movie theatre/i, "cinema"],
-  [/record store|music store/i, "music"],
-  [/cowork/i, "coworking"],
+/**
+ * Elsewhere category ↔ Qloo place-category tags (`urn:tag:category:place:*`), verified against the API.
+ * Order matters when a place carries several: the first listed Elsewhere category wins.
+ */
+const QLOO_CATEGORY_TAGS: [PlaceCategory, string[]][] = [
+  ["library", ["library"]],
+  ["bookstore", ["book_store", "used_book_store"]],
+  ["tea", ["tea_house"]],
+  ["coworking", ["coworking_space"]],
+  ["cafe", ["cafe", "coffee_shop"]],
+  ["gallery", ["art_gallery"]],
+  ["museum", ["museum"]],
+  ["garden", ["garden", "botanical_garden", "community_garden"]],
+  ["park", ["park"]],
+  ["music", ["record_store"]],
+  ["cinema", ["movie_theater"]],
+  ["arts_centre", ["art_center", "cultural_center", "arts_organization"]],
+  ["community", ["community_center"]],
+  ["plaza", ["plaza"]],
 ];
+const TAG_PREFIX = "urn:tag:category:place:";
 
+export function qlooTagsFor(categories: PlaceCategory[]): string[] {
+  return QLOO_CATEGORY_TAGS.filter(([c]) => categories.includes(c)).flatMap(([, ids]) => ids.map((id) => TAG_PREFIX + id));
+}
+
+/** Category from Qloo's category tags only — other tag types (e.g. nearby attractions) would mislead. */
 function qlooCategory(p: QlooPlace): PlaceCategory | null {
-  const names = (p.tags ?? []).map((t) => t.name ?? t.id ?? t.tag_id ?? "").join(" | ");
-  for (const [re, cat] of QLOO_TAG_CATEGORY) if (re.test(names)) return cat;
+  const ids = new Set(
+    (p.tags ?? [])
+      .map((t) => t.tag_id ?? t.id ?? "")
+      .filter((id) => id.startsWith(TAG_PREFIX))
+      .map((id) => id.slice(TAG_PREFIX.length)),
+  );
+  for (const [cat, tagIds] of QLOO_CATEGORY_TAGS) if (tagIds.some((id) => ids.has(id))) return cat;
   return null;
+}
+
+const DAY: Record<string, string> = { monday: "Mo", tuesday: "Tu", wednesday: "We", thursday: "Th", friday: "Fr", saturday: "Sa", sunday: "Su" };
+
+/** Qloo `properties.hours` → OSM opening_hours syntax, so one evaluator handles every source. */
+export function qlooHoursToOsm(hours: NonNullable<NonNullable<QlooPlace["properties"]>["hours"]> | null | undefined): string | undefined {
+  if (!hours) return undefined;
+  const hhmm = (t?: string | null) => /T?(\d{2}:\d{2})/.exec(t ?? "")?.[1];
+  const rules: string[] = [];
+  let any = false;
+  for (const [day, spans] of Object.entries(hours)) {
+    const d = DAY[day.toLowerCase()];
+    if (!d || !spans?.length) continue;
+    any = true;
+    const ranges = spans
+      .filter((s) => !s.closed)
+      .map((s) => {
+        const o = hhmm(s.opens), c = hhmm(s.closes);
+        return o && c ? `${o}-${c === "00:00" ? "24:00" : c}` : null;
+      })
+      .filter(Boolean);
+    rules.push(ranges.length ? `${d} ${ranges.join(",")}` : `${d} off`);
+  }
+  return any && rules.length ? rules.join("; ") : undefined;
 }
 
 function qlooLatLon(p: QlooPlace) {
@@ -104,20 +150,41 @@ function qlooToPlace(p: QlooPlace, category: PlaceCategory, at: { lat: number; l
     lat: at.lat,
     lon: at.lon,
     category,
-    address: props.address,
-    url: props.website,
-    phone: props.phone,
+    address: props.address ?? undefined,
+    url: props.website ?? undefined,
+    phone: props.phone ?? undefined,
+    openingHoursRaw: qlooHoursToOsm(props.hours),
     priceLevel: props.price_level && props.price_level >= 1 && props.price_level <= 4 ? props.price_level : undefined,
-    rating: props.business_rating,
+    rating: props.business_rating ?? undefined,
     wifi: "unknown",
     outdoorSeating: "unknown",
     wheelchair: "unknown",
-    description: props.description,
+    description: props.description ?? undefined,
     imageUrl: props.images?.[0]?.url ?? props.image?.url,
     imageCredit: props.images?.[0]?.url || props.image?.url ? "Image via Qloo" : undefined,
     tags: (p.tags ?? []).map((t) => t.name).filter((n): n is string => !!n).slice(0, 8),
     fetchedAt: new Date().toISOString(),
     dataNote: "Place details from Qloo",
+  };
+}
+
+/** Fills only fields the inventory record lacks, and labels where they came from. */
+function enrichFromQloo(p: Place, qp: QlooPlace): Place | null {
+  const props = qp.properties ?? {};
+  const hours = p.openingHoursRaw ? undefined : qlooHoursToOsm(props.hours);
+  const price = !p.priceLevel && props.price_level && props.price_level >= 1 && props.price_level <= 4 ? props.price_level : undefined;
+  const rating = p.rating === undefined && props.business_rating ? props.business_rating : undefined;
+  const image = p.imageUrl ? undefined : props.images?.[0]?.url ?? props.image?.url;
+  if (!hours && !price && !rating && !image) return null;
+  const filled = [hours && "hours", price && "price", rating && "rating", image && "photo"].filter(Boolean).join(", ");
+  return {
+    ...p,
+    ...(hours && { openingHoursRaw: hours, hoursSource: "Qloo" }),
+    ...(price && { priceLevel: price }),
+    ...(rating && { rating }),
+    ...(image && { imageUrl: image, imageCredit: "Image via Qloo" }),
+    address: p.address ?? props.address ?? undefined,
+    dataNote: [p.dataNote, `${filled[0].toUpperCase()}${filled.slice(1)} from Qloo`].filter(Boolean).join(" · "),
   };
 }
 
@@ -128,6 +195,8 @@ export interface TasteResult {
   evidence: Map<string, CulturalEvidence>;
   /** Qloo places not present in the inventory, added to the shared candidate pool. */
   extraPlaces: Place[];
+  /** Inventory places with gaps filled from their matched Qloo record (hours, price, rating, image). */
+  enriched: Map<string, Place>;
 }
 
 export async function culturalEvidence(args: {
@@ -136,6 +205,8 @@ export async function culturalEvidence(args: {
   lon: number;
   radiusM: number;
   inventory: Place[];
+  /** Categories in play for this search; used to filter Qloo by its place-category tags. */
+  categories: PlaceCategory[];
 }): Promise<TasteResult> {
   const mode = tasteMode();
   const usable = args.signals.filter((s) => s.provenance === mode);
@@ -150,6 +221,7 @@ export async function culturalEvidence(args: {
         : undefined,
       evidence,
       extraPlaces: [],
+      enriched: new Map(),
     };
   }
   const names = new Map(usable.map((s) => [s.id, s.name]));
@@ -167,7 +239,7 @@ export async function culturalEvidence(args: {
         note: "Simulated in demo mode from a hand-written fixture — not a Qloo result.",
       });
     }
-    return { mode, status: "ok", evidence, extraPlaces: [] };
+    return { mode, status: "ok", evidence, extraPlaces: [], enriched: new Map() };
   }
 
   try {
@@ -176,8 +248,10 @@ export async function culturalEvidence(args: {
       lat: args.lat,
       lon: args.lon,
       radiusM: args.radiusM,
+      tags: qlooTagsFor(args.categories),
     });
     const extraPlaces: Place[] = [];
+    const enriched = new Map<string, Place>();
     for (const qp of places) {
       const at = qlooLatLon(qp);
       const contributions = readExplainability(qp.query?.explainability)
@@ -193,7 +267,11 @@ export async function culturalEvidence(args: {
       };
       const match = at ? args.inventory.find((p) => distanceM(p, at) < 150 && namesMatch(p.name, qp.name)) : undefined;
       if (match) {
-        if (!evidence.has(match.id)) evidence.set(match.id, { ...base, match: "name-proximity" });
+        if (!evidence.has(match.id)) {
+          evidence.set(match.id, { ...base, match: "name-proximity" });
+          const filled = enrichFromQloo(match, qp);
+          if (filled) enriched.set(match.id, filled);
+        }
         continue;
       }
       const category = qlooCategory(qp);
@@ -209,6 +287,7 @@ export async function culturalEvidence(args: {
       message: warning ? `Qloo: ${warning}` : undefined,
       evidence,
       extraPlaces,
+      enriched,
     };
   } catch (e) {
     const msg =
@@ -223,6 +302,6 @@ export async function culturalEvidence(args: {
           }[e.kind]
         : "Cultural matching failed.";
     console.warn("[qloo]", (e as Error).message);
-    return { mode, status: "error", message: msg, evidence, extraPlaces: [] };
+    return { mode, status: "error", message: msg, evidence, extraPlaces: [], enriched: new Map() };
   }
 }

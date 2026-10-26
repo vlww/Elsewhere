@@ -7,6 +7,8 @@ import { SYSTEM_PROMPT } from "./prompt";
 import { executeTool, TOOL_STATUS, TOOLS, type ToolContext } from "./tools";
 
 export const AGENT_MODEL = process.env.ELSEWHERE_MODEL ?? "claude-opus-5-5";
+const SUPPORTS_FALLBACK = !AGENT_MODEL.startsWith("claude-haiku");
+const AGENT_EFFORT = (process.env.ELSEWHERE_EFFORT ?? "medium") as "low" | "medium" | "high";
 const MAX_TOOL_ROUNDS = 8;
 
 type Msg = Anthropic.Beta.BetaMessageParam;
@@ -71,9 +73,9 @@ export async function runAgent(args: {
         // Last round: answer from what we have instead of calling more tools.
         ...(round === MAX_TOOL_ROUNDS && { tool_choice: { type: "none" as const } }),
         messages,
-        output_config: { effort: "medium" },
-        betas: ["server-side-fallback-2026-07-01"],
-        fallbacks: "default",
+        output_config: { effort: AGENT_EFFORT },
+        // Server-side refusal fallback; Haiku has none, so the parameter is only sent for other models.
+        ...(SUPPORTS_FALLBACK && { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const }),
       },
       { signal: args.signal },
     );

@@ -70,5 +70,7 @@ Qloo's affinity is shown raw and never as a percentage. The total is labelled as
 
 - **Overpass:** the public `overpass-api.de` server now refuses automated traffic, so it's opt-in via `OVERPASS_URL` (self-hosted recommended).
 - **Demo snapshot:** rebuild with `scripts/build-demo-snapshot.mjs` (instructions in the file). Data © OpenStreetMap contributors, ODbL.
-- **Refusal fallback:** agent requests use Claude's server-side `fallbacks: "default"` (beta `server-side-fallback-2026-07-01`), so a safety-classifier decline is retried on the recommended fallback model.
+- **Refusal fallback:** agent requests use Claude's server-side `fallbacks: "default"` (beta `server-side-fallback-2026-07-01`), so a safety-classifier decline is retried on the recommended fallback model. Haiku has no server-side fallback, so the parameter is skipped for it.
+- **Cost:** the guide is pay-per-use. Set `ELSEWHERE_MODEL=claude-haiku-5-5` (and optionally `ELSEWHERE_EFFORT=low`) for a cheap demo; everything except the chat works with no Anthropic key at all.
+- **Qloo matching:** insights are filtered to the search's categories via `urn:tag:category:place:*` tags; a place's category comes only from those tags (other tag types include nearby landmarks). Matched inventory places borrow missing hours, price, rating or photo from Qloo, labelled as such.
 - **Accessibility:** markers are real buttons with labels; marker kinds differ by icon and shape, not just colour; panels support keyboard and Escape; `prefers-reduced-motion` disables camera flights and 3D animation.

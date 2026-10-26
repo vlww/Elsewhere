@@ -49,6 +49,8 @@ export const PlaceSchema = z.object({
   openingHoursRaw: z.string().optional(),
   /** Weekly hours as human-readable lines, when the provider supplies them. */
   openingHoursText: z.array(z.string()).optional(),
+  /** Who listed the hours, when not the place's own provider (e.g. "Qloo"). */
+  hoursSource: z.string().optional(),
   /** Provider-reported open-now status at fetch time (Google). */
   openNowReported: z.boolean().optional(),
   /** 1 (inexpensive) – 4 (very expensive) */

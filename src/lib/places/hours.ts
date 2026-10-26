@@ -19,7 +19,7 @@ function fmtTime(d: Date) {
 
 export function evaluateOpenState(place: Place, now: Date): OpenState {
   if (place.openingHoursRaw) {
-    const source = place.source === "google" ? "Google Places" : "OpenStreetMap";
+    const source = place.hoursSource ?? (place.source === "google" ? "Google Places" : place.source === "qloo" ? "Qloo" : "OpenStreetMap");
     try {
       const oh = new opening_hours(place.openingHoursRaw, null, { mode: 0, tag_key: "opening_hours" } as never);
       if (oh.getUnknown(now)) return { status: "unknown", detail: "Hours listed but ambiguous right now", source };

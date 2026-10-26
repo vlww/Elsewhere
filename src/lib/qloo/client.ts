@@ -90,12 +90,16 @@ const QlooPlace = z
       .optional(),
     properties: z
       .object({
-        address: z.string().optional(),
-        business_rating: z.number().optional(),
-        price_level: z.number().optional(),
-        website: z.string().optional(),
-        phone: z.string().optional(),
-        description: z.string().optional(),
+        address: z.string().nullable().optional(),
+        business_rating: z.number().nullable().optional(),
+        price_level: z.number().nullable().optional(),
+        website: z.string().nullable().optional(),
+        hours: z
+          .record(z.string(), z.array(z.object({ opens: z.string().nullable().optional(), closes: z.string().nullable().optional(), closed: z.boolean().optional() })))
+          .nullable()
+          .optional(),
+        phone: z.string().nullable().optional(),
+        description: z.string().nullable().optional(),
         is_closed: z.boolean().optional(),
         image: z.object({ url: z.string() }).passthrough().optional(),
         images: z.array(z.object({ url: z.string() }).passthrough()).optional(),
@@ -117,6 +121,8 @@ export async function insightsPlaces(args: {
   lat: number;
   lon: number;
   radiusM: number;
+  /** Qloo category tag ids (urn:tag:category:place:*), unioned. */
+  tags?: string[];
   take?: number;
 }): Promise<{ places: QlooPlace[]; warning?: string }> {
   const json = await get("/v2/insights", {
@@ -125,6 +131,7 @@ export async function insightsPlaces(args: {
     // WKT is longitude-first.
     "filter.location": `POINT(${args.lon.toFixed(6)} ${args.lat.toFixed(6)})`,
     "filter.location.radius": Math.round(args.radiusM),
+    "filter.tags": args.tags?.length ? args.tags.join(",") : undefined,
     "feature.explainability": true,
     take: args.take ?? 50,
   });
