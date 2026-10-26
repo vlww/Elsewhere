@@ -1,0 +1,178 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------------
+   Elsewhere design tokens — sunset pastels balanced with warm neutrals
+   ------------------------------------------------------------------------ */
+@theme {
+  --font-serif: var(--font-serif), "Iowan Old Style", Georgia, serif;
+  --font-sans: var(--font-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --color-ivory: #fff9f4;
+  --color-cream: #fdf3ea;
+  --color-peach: #fce5d9;
+  --color-apricot: #f6c29b;
+  --color-sunset: #f2b9c8;
+  --color-rose: #d98fa8;
+  --color-rose-deep: #b8668a;
+  --color-lavender: #d9d0f2;
+  --color-lilac: #b9a5e8;
+  --color-butter: #f7e6a2;
+  --color-sage: #b9c8b0;
+  --color-sage-deep: #7f9775;
+  --color-terracotta: #d88a6c;
+  --color-plum: #59465f;
+  --color-aubergine: #302638;
+  --color-ink: #302638;
+  --color-ink-soft: #6b5a70;
+  --color-ink-faint: #9a8b9c;
+  --color-line: rgb(89 70 95 / 0.12);
+  --color-line-strong: rgb(89 70 95 / 0.2);
+
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+
+  --shadow-float: 0 1px 1px rgb(48 38 56 / 0.04), 0 6px 16px -4px rgb(48 38 56 / 0.1), 0 24px 48px -16px rgb(89 52 82 / 0.18);
+  --shadow-card: 0 1px 2px rgb(48 38 56 / 0.05), 0 8px 20px -10px rgb(89 52 82 / 0.16);
+  --shadow-lift: 0 2px 4px rgb(48 38 56 / 0.06), 0 16px 32px -12px rgb(89 52 82 / 0.24);
+
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-shimmer: shimmer 1.8s linear infinite;
+  --animate-rise: rise 420ms var(--ease-out-soft) both;
+  --animate-pulse-soft: pulse-soft 2.4s ease-in-out infinite;
+
+  @keyframes shimmer {
+    from { background-position: -200% 0; }
+    to { background-position: 200% 0; }
+  }
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(6px) scale(0.98); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes pulse-soft {
+    0%, 100% { transform: scale(1); opacity: 0.55; }
+    50% { transform: scale(1.9); opacity: 0; }
+  }
+}
+
+:root {
+  --motion-short: 160ms;
+  --motion-medium: 280ms;
+  --motion-long: 520ms;
+  color-scheme: light;
+}
+
+html, body {
+  background: var(--color-ivory);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection { background: color-mix(in srgb, var(--color-sunset) 60%, transparent); }
+
+:focus-visible {
+  outline: 2px solid var(--color-rose-deep);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Floating surface used by panels over the map */
+.surface {
+  background: color-mix(in srgb, var(--color-ivory) 92%, transparent);
+  backdrop-filter: blur(18px) saturate(1.15);
+  -webkit-backdrop-filter: blur(18px) saturate(1.15);
+  border: 1px solid rgb(255 255 255 / 0.7);
+  box-shadow: var(--shadow-float), inset 0 1px 0 rgb(255 255 255 / 0.8);
+}
+.surface-solid {
+  background: var(--color-ivory);
+  border: 1px solid var(--color-line);
+  box-shadow: var(--shadow-float);
+}
+
+.scroll-soft { scrollbar-width: thin; scrollbar-color: rgb(89 70 95 / 0.18) transparent; }
+.scroll-soft::-webkit-scrollbar { width: 8px; }
+.scroll-soft::-webkit-scrollbar-thumb { background: rgb(89 70 95 / 0.16); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+
+.shimmer-text {
+  background: linear-gradient(90deg, var(--color-ink-soft) 0%, var(--color-rose) 40%, var(--color-lilac) 55%, var(--color-ink-soft) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: var(--animate-shimmer);
+}
+
+/* MapLibre chrome, restyled */
+.maplibregl-ctrl-attrib {
+  background: rgb(255 249 244 / 0.75) !important;
+  font-size: 10px !important;
+  border-radius: 8px 0 0 0;
+  color: var(--color-ink-soft);
+}
+.maplibregl-ctrl-attrib a { color: var(--color-ink-soft) !important; }
+.maplibregl-canvas:focus-visible { outline: none; }
+
+/* Place markers */
+/* No `position` here: MapLibre positions marker elements absolutely via .maplibregl-marker. */
+.es-marker { display: grid; place-items: center; cursor: pointer; background: none; border: 0; padding: 0; }
+.es-marker .pin {
+  display: grid; place-items: center;
+  width: 34px; height: 34px;
+  border-radius: 12px 12px 12px 3px;
+  transform: rotate(-45deg);
+  background: var(--pin-bg, #fff);
+  border: 2px solid #fff;
+  box-shadow: 0 2px 4px rgb(48 38 56 / 0.18), 0 10px 18px -8px rgb(89 52 82 / 0.45);
+  transition: transform var(--motion-medium) var(--ease-out-soft), box-shadow var(--motion-medium);
+}
+.es-marker[data-shape="round"] .pin { border-radius: 999px; transform: none; }
+.es-marker .pin > * { transform: rotate(45deg); color: var(--color-aubergine); }
+.es-marker[data-shape="round"] .pin > * { transform: none; }
+.es-marker .rank {
+  position: absolute; top: -6px; right: -8px;
+  min-width: 18px; height: 18px; padding: 0 4px;
+  border-radius: 9px; background: var(--color-aubergine); color: var(--color-ivory);
+  font: 600 10px/18px var(--font-sans); text-align: center;
+  box-shadow: 0 0 0 2px #fff;
+}
+.es-marker .label {
+  position: absolute; left: 50%; top: calc(100% + 8px); transform: translateX(-50%) translateY(-2px);
+  white-space: nowrap; pointer-events: none;
+  font: 500 12px/1 var(--font-sans); color: var(--color-aubergine);
+  background: rgb(255 249 244 / 0.95); padding: 6px 9px; border-radius: 999px;
+  box-shadow: var(--shadow-card);
+  opacity: 0; transition: opacity var(--motion-short), transform var(--motion-short);
+}
+.es-marker:hover .pin, .es-marker:focus-visible .pin { transform: rotate(-45deg) translate(2px, -2px) scale(1.08); }
+.es-marker[data-shape="round"]:hover .pin, .es-marker[data-shape="round"]:focus-visible .pin { transform: translateY(-3px) scale(1.08); }
+.es-marker:hover .label, .es-marker:focus-visible .label, .es-marker[data-selected="true"] .label { opacity: 1; transform: translateX(-50%); }
+.es-marker[data-selected="true"] .pin {
+  width: 44px; height: 44px;
+  border-width: 3px;
+  box-shadow: 0 0 0 4px rgb(255 255 255 / 0.65), 0 0 0 9px color-mix(in srgb, var(--pin-bg) 45%, transparent), 0 16px 26px -10px rgb(89 52 82 / 0.55);
+}
+.es-marker[data-selected="true"] { z-index: 5; }
+/* Immersive: the DOM marker becomes a small ground anchor; the 3D gem floats above it. */
+.es-marker[data-mode="immersive"] .pin { width: 24px; height: 24px; border-width: 2px; }
+.es-marker[data-mode="immersive"] .pin svg { width: 12px; height: 12px; }
+.es-marker[data-mode="immersive"] .rank { top: -8px; right: -10px; }
+.es-marker[data-mode="immersive"][data-selected="true"] .pin { width: 30px; height: 30px; }
+.es-marker[data-dimmed="true"] { opacity: 0.45; }
+.es-marker.is-new .pin { animation: marker-in 620ms var(--ease-out-soft) both; animation-delay: var(--delay, 0ms); }
+.es-marker[data-shape="round"].is-new .pin { animation-name: marker-in-round; }
+@keyframes marker-in { from { opacity: 0; transform: rotate(-45deg) translateY(-14px) scale(0.6); } to { opacity: 1; transform: rotate(-45deg); } }
+@keyframes marker-in-round { from { opacity: 0; transform: translateY(-14px) scale(0.6); } to { opacity: 1; transform: none; } }
+
+.es-user-dot { width: 16px; height: 16px; border-radius: 999px; background: var(--color-rose-deep); border: 3px solid #fff; box-shadow: 0 2px 6px rgb(48 38 56 / 0.3); }
+.es-user-dot::after { content: ""; position: absolute; inset: -3px; border-radius: 999px; background: var(--color-rose); animation: var(--animate-pulse-soft); z-index: -1; }
+
+.es-saved-pin { width: 22px; height: 22px; border-radius: 999px; display: grid; place-items: center; background: var(--color-aubergine); color: var(--color-butter); border: 2px solid #fff; box-shadow: var(--shadow-card); cursor: pointer; }
+.es-trail-stop { width: 26px; height: 26px; border-radius: 999px; display: grid; place-items: center; background: var(--color-aubergine); color: var(--color-ivory); font: 600 12px var(--font-sans); border: 2px solid #fff; box-shadow: var(--shadow-card); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
+}
