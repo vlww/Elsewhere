@@ -1,0 +1,6 @@
+# Never upload local secrets or build output; env vars are configured in Vercel.
+.env*.local
+.env
+.next
+node_modules
+public/maplibre
