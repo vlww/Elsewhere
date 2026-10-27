@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { AgentEvent, AgentSession, CulturalEntity, SearchResult } from "@/types";
+import type { AgentEvent, AgentSession, CulturalEntity, SearchResult, TasteTrail } from "@/types";
 import { CATEGORY_LABEL } from "@/lib/recommendations/activities";
 import { tasteMode } from "@/lib/qloo";
 import { placesProviderSummary } from "@/lib/places";
@@ -14,7 +14,7 @@ const MAX_TOOL_ROUNDS = 8;
 type Msg = Anthropic.Beta.BetaMessageParam;
 
 /** Per-turn session snapshot. Appended to the user turn (never edits earlier history). */
-function sessionBlock(session: AgentSession, result: SearchResult | null) {
+function sessionBlock(session: AgentSession, result: SearchResult | null, trail: TasteTrail | null) {
   const lens = session.lensMode;
   const visible = result
     ? [...result.recommendations]
@@ -39,6 +39,11 @@ function sessionBlock(session: AgentSession, result: SearchResult | null) {
       recent_feedback: session.feedback.slice(-6).map((f) => `${f.placeName}: ${f.reason}`),
     }),
     visible.length ? `Cards in view (${lens} order):\n${visible.join("\n")}` : "No results on screen yet.",
+    trail
+      ? `Trail on the map: "${trail.story?.title ?? trail.title}" (${trail.mode}, ${trail.startAt}–${trail.endAt}, spec ${JSON.stringify({ ...trail.spec, stay: undefined })}):\n${trail.stops
+          .map((s) => `${s.order}. ${s.place.name} [${s.placeId}] ${CATEGORY_LABEL[s.place.category]}, arrive ~${s.arriveAt}, stay ~${s.plannedMin} min`)
+          .join("\n")}`
+      : "No trail on the map.",
     "</session>",
   ].join("\n");
 }
@@ -48,6 +53,7 @@ export async function runAgent(args: {
   userText: string;
   session: AgentSession;
   result: SearchResult | null;
+  trail: TasteTrail | null;
   knownEntities: CulturalEntity[];
   send: (e: AgentEvent) => void;
   signal: AbortSignal;
@@ -55,11 +61,12 @@ export async function runAgent(args: {
   const client = new Anthropic();
   const messages: Msg[] = [
     ...args.history,
-    { role: "user", content: `${args.userText}\n\n${sessionBlock(args.session, args.result)}` },
+    { role: "user", content: `${args.userText}\n\n${sessionBlock(args.session, args.result, args.trail)}` },
   ];
   const ctx: ToolContext = {
     session: args.session,
     result: args.result,
+    trail: args.trail,
     knownEntities: [...args.knownEntities],
     emit: (action) => args.send({ type: "action", action }),
     status: (label) => args.send({ type: "status", label }),

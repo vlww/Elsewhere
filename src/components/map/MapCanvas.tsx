@@ -14,6 +14,7 @@ import { BASE_STYLE_URL, BUILDING_2D_COLOR, BUILDING_2D_COLOR_MUTED, BUILDING_3D
 import { ImmersiveLayer, type TasteBuilding } from "./ImmersiveLayer";
 import { findAuraBuildings, findFootprints, type AuraBuilding, type Footprint } from "./footprints";
 import { mapRef, panelPadding, prefersReducedMotion } from "./mapRef";
+import { trailGeometry, TRAIL_COLORS } from "@/components/trails/trailGeometry";
 
 const MARKER_LIMIT = 14;
 /** Immersive draws the 3D city, which the basemap only has from z14; further out it's an empty plain. */
@@ -48,6 +49,32 @@ function circlePolygon(lat: number, lon: number, radiusM: number) {
 }
 
 const emptyFC = { type: "FeatureCollection" as const, features: [] };
+
+/** Route gradient along the line, revealed up to `progress` (0–1) for the draw-in. */
+function routeGradient(colors: string[], progress: number): maplibregl.ExpressionSpecification {
+  const stops: (number | string)[] = [];
+  colors.forEach((c, i) => stops.push(colors.length > 1 ? i / (colors.length - 1) : 0, c));
+  if (colors.length === 1) stops.push(1, colors[0]);
+  const ramp = ["interpolate", ["linear"], ["line-progress"], ...stops] as unknown as maplibregl.ExpressionSpecification;
+  return progress >= 1 ? ramp : ["case", ["<=", ["line-progress"], progress], ramp, "rgba(0,0,0,0)"];
+}
+/** "Marching" dash steps for the flow overlay (MapLibre can't animate dash offsets directly). */
+const FLOW_DASHES = [
+  [0, 4, 3],
+  [0.5, 4, 2.5],
+  [1, 4, 2],
+  [1.5, 4, 1.5],
+  [2, 4, 1],
+  [2.5, 4, 0.5],
+  [3, 4, 0],
+  [0, 0.5, 3, 3.5],
+  [0, 1, 3, 3],
+  [0, 1.5, 3, 2.5],
+  [0, 2, 3, 2],
+  [0, 2.5, 3, 1.5],
+  [0, 3, 3, 1],
+  [0, 3.5, 3, 0.5],
+];
 
 /** The top recommendations as floating 3D markers, in the same order and filter as the DOM markers. */
 function immersivePoints(highlights: Map<string, TasteHighlight>, footprints: Map<string, Footprint | null>) {
@@ -95,6 +122,7 @@ export function MapCanvas() {
   const markers = useRef(new Map<string, MarkerEntry>());
   const seen = useRef(new Set<string>());
   const extraMarkers = useRef<maplibregl.Marker[]>([]);
+  const trailMarkers = useRef<{ marker: maplibregl.Marker; el: HTMLElement }[]>([]);
   const userMarker = useRef<maplibregl.Marker | null>(null);
   const immersive = useRef<ImmersiveLayer | null>(null);
   const footprints = useRef(new Map<string, Footprint | null>());
@@ -125,6 +153,8 @@ export function MapCanvas() {
   const trail = useElsewhere((s) => s.trail);
   const saved = useElsewhere((s) => s.saved);
   const tasteLayer = useElsewhere((s) => s.tasteLayer);
+  const trailStop = useElsewhere((s) => s.trailStop);
+  const lowPower = useElsewhere((s) => s.lowPower);
 
   // The Taste Layer's highlights: one list, drawn by whichever mode is active.
   const highlights = useTasteHighlights();
@@ -408,14 +438,61 @@ export function MapCanvas() {
           if (refreshAura(map)) setAuraVersion((v) => v + 1);
         });
 
-        map.addSource("es-trail", { type: "geojson", data: emptyFC });
-        map.addLayer({
-          id: "es-trail-line",
-          type: "line",
-          source: "es-trail",
-          layout: { "line-cap": "round", "line-join": "round" },
-          paint: { "line-color": "#B8668A", "line-width": 3.5, "line-opacity": 0.85, "line-dasharray": [0.5, 1.8] },
-        });
+        // Taste Trail route: white casing, a soft glow, the gradient line, and a light flowing along it.
+        map.addSource("es-trail", { type: "geojson", data: emptyFC, lineMetrics: true });
+        map.addSource("es-trail-est", { type: "geojson", data: emptyFC });
+        const routeLayout = { "line-cap": "round", "line-join": "round" } as const;
+        map.addLayer(
+          {
+            id: "es-trail-casing",
+            type: "line",
+            source: "es-trail",
+            layout: routeLayout,
+            paint: { "line-color": "#FFFFFF", "line-width": ["interpolate", ["linear"], ["zoom"], 13, 6, 17, 12], "line-opacity": 0.9 },
+          },
+          beforeLabels,
+        );
+        map.addLayer(
+          {
+            id: "es-trail-glow",
+            type: "line",
+            source: "es-trail",
+            layout: routeLayout,
+            paint: { "line-gradient": routeGradient(["#E58FA8"], 0), "line-width": ["interpolate", ["linear"], ["zoom"], 13, 12, 17, 26], "line-blur": 10, "line-opacity": 0.45 },
+          },
+          beforeLabels,
+        );
+        map.addLayer(
+          {
+            id: "es-trail-line",
+            type: "line",
+            source: "es-trail",
+            layout: routeLayout,
+            paint: { "line-gradient": routeGradient(["#E58FA8"], 0), "line-width": ["interpolate", ["linear"], ["zoom"], 13, 3.5, 17, 7] },
+          },
+          beforeLabels,
+        );
+        map.addLayer(
+          {
+            id: "es-trail-flow",
+            type: "line",
+            source: "es-trail",
+            layout: { "line-cap": "butt", "line-join": "round" },
+            paint: { "line-color": "#FFFDF6", "line-width": ["interpolate", ["linear"], ["zoom"], 13, 1.4, 17, 2.6], "line-opacity": 0, "line-dasharray": FLOW_DASHES[0] },
+          },
+          beforeLabels,
+        );
+        // Legs with no routed geometry: dotted, so an estimate never looks like a real street route.
+        map.addLayer(
+          {
+            id: "es-trail-est",
+            type: "line",
+            source: "es-trail-est",
+            layout: routeLayout,
+            paint: { "line-color": "#B8668A", "line-width": 3, "line-opacity": 0.8, "line-dasharray": [0.4, 1.8] },
+          },
+          beforeLabels,
+        );
 
         map.on("click", "es-pool-points", (e) => {
           const id = e.features?.[0]?.properties?.id;
@@ -446,6 +523,7 @@ export function MapCanvas() {
       }
       markerMap.clear();
       extraMarkers.current.forEach((m) => m.remove());
+      trailMarkers.current.forEach((m) => m.marker.remove());
       userMarker.current?.remove();
       userMarker.current = null;
       immersive.current = null;
@@ -484,7 +562,8 @@ export function MapCanvas() {
     const map = mapRef.current;
     if (!ready || !map) return;
     const ordered: Recommendation[] = useElsewhere.getState().orderedRecommendations();
-    const visible = ordered.filter((r) => !hiddenCategories.includes(r.place.category));
+    const onTrail = new Set(useElsewhere.getState().trail?.stops.map((s) => s.placeId) ?? []);
+    const visible = ordered.filter((r) => !hiddenCategories.includes(r.place.category) && !onTrail.has(r.place.id));
     const top = visible.slice(0, MARKER_LIMIT);
     const rest = visible.slice(MARKER_LIMIT);
     const immersiveOn = mapMode === "immersive";
@@ -532,7 +611,8 @@ export function MapCanvas() {
       entry.el.dataset.selected = String(selected);
       entry.el.dataset.shape = immersiveOn ? "round" : meta.shape;
       entry.el.dataset.mode = immersiveOn ? "immersive" : "explore";
-      entry.el.dataset.dimmed = String(!!selectedPlaceId && !selected && hoveredPlaceId !== r.place.id);
+      // With a trail on the map, other results step back so the route reads first.
+      entry.el.dataset.dimmed = String((!!selectedPlaceId || onTrail.size > 0) && !selected && hoveredPlaceId !== r.place.id);
       entry.el.style.setProperty("--pin-bg", meta.color);
       entry.el.dataset.taste = h ? h.tier : tasteLayer && highlights.length ? "muted" : "off";
       if (h) {
@@ -579,7 +659,7 @@ export function MapCanvas() {
     });
 
     immersive.current?.setPoints(immersivePoints(highlightById, footprints.current));
-  }, [ready, result, hiddenCategories, selectedPlaceId, hoveredPlaceId, lensMode, sortMode, tasteSignals.length, mapMode, highlightById, tasteLayer, highlights.length, footprintVersion]);
+  }, [ready, result, hiddenCategories, selectedPlaceId, hoveredPlaceId, lensMode, sortMode, tasteSignals.length, mapMode, highlightById, tasteLayer, highlights.length, footprintVersion, trail]);
 
   // --- Taste Layer ----------------------------------------------------------
   useEffect(() => {
@@ -677,7 +757,7 @@ export function MapCanvas() {
       map.setPaintProperty(ids[i], "circle-stroke-width", 2.5 - 1.5 * k);
     };
     const auraLayer = map.getLayer("es-taste-aura") ? "es-taste-aura" : null;
-    if (!hasStandouts || prefersReducedMotion()) {
+    if (!hasStandouts || prefersReducedMotion() || lowPower) {
       paint(0, 0.55);
       paint(1, 1);
       if (auraLayer) map.setPaintProperty(auraLayer, "fill-opacity", auraOpacity(AURA_REACH_M + 40, null));
@@ -701,7 +781,7 @@ export function MapCanvas() {
       cancelAnimationFrame(raf);
       if (mapRef.current?.getLayer(ids[0])) ids.forEach((id) => map.setPaintProperty(id, "circle-stroke-opacity", 0));
     };
-  }, [ready, hasStandouts]);
+  }, [ready, hasStandouts, lowPower]);
 
   // --- Saved pins (for saved places not already shown) -----------------------
   useEffect(() => {
@@ -720,31 +800,127 @@ export function MapCanvas() {
       el.addEventListener("click", () => useElsewhere.getState().select(place.id, { focus: false }));
       extraMarkers.current.push(new maplibregl.Marker({ element: el }).setLngLat([place.lon, place.lat]).addTo(map));
     }
-    if (trail) {
-      trail.stops.forEach((s, i) => {
-        const el = document.createElement("div");
-        el.className = "es-trail-stop";
-        el.textContent = String(i + 1);
-        el.setAttribute("aria-label", `Trail stop ${i + 1}: ${s.name}`);
-        el.setAttribute("role", "img");
-        extraMarkers.current.push(new maplibregl.Marker({ element: el, offset: [0, -48] }).setLngLat([s.lon, s.lat]).addTo(map));
-      });
-    }
   }, [ready, saved, result, trail]);
 
-  // --- Trail line -----------------------------------------------------------
+  // --- Trail stops: numbered markers in itinerary order ----------------------
   useEffect(() => {
     const map = mapRef.current;
     if (!ready || !map) return;
-    const src = map.getSource("es-trail") as maplibregl.GeoJSONSource | undefined;
-    const loc = useElsewhere.getState().location;
-    if (!trail || !loc) return void src?.setData(emptyFC);
-    src?.setData({
-      type: "Feature",
-      properties: {},
-      geometry: { type: "LineString", coordinates: [[loc.lon, loc.lat], ...trail.stops.map((s) => [s.lon, s.lat] as [number, number])] },
+    trailMarkers.current.forEach((m) => m.marker.remove());
+    trailMarkers.current = [];
+    if (!trail) return;
+    const start = document.createElement("div");
+    start.className = "es-trail-start";
+    start.setAttribute("role", "img");
+    start.setAttribute("aria-label", `Trail starts at ${trail.start.name}`);
+    start.textContent = "Start";
+    trailMarkers.current.push({ marker: new maplibregl.Marker({ element: start }).setLngLat([trail.start.lon, trail.start.lat]).addTo(map), el: start });
+    trail.stops.forEach((s, i) => {
+      const el = document.createElement("button");
+      el.type = "button";
+      el.className = "es-trail-stop";
+      el.style.setProperty("--stop", TRAIL_COLORS[i % TRAIL_COLORS.length]);
+      el.style.setProperty("--delay", `${400 + i * 350}ms`);
+      const num = document.createElement("span");
+      num.className = "num";
+      const digit = document.createElement("span");
+      digit.textContent = String(i + 1);
+      num.append(digit);
+      const label = document.createElement("span");
+      label.className = "label";
+      const [h, m] = s.arriveAt.split(":").map(Number);
+      label.textContent = `${s.place.name} · ~${((h + 11) % 12) + 1}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+      el.append(num, label);
+      el.setAttribute("aria-label", `Stop ${i + 1}: ${s.place.name}, arrive around ${s.arriveAt}`);
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const st = useElsewhere.getState();
+        const fly = st.mapMode === "immersive";
+        st.setTrailStop(i, { focus: fly });
+        st.select(s.placeId, { focus: fly, detail: true });
+      });
+      trailMarkers.current.push({ marker: new maplibregl.Marker({ element: el, anchor: "bottom" }).setLngLat([s.place.lon, s.place.lat]).addTo(map), el });
     });
   }, [ready, trail]);
+
+  useEffect(() => {
+    trailMarkers.current.forEach(({ el, marker }, k) => {
+      const on = k > 0 && k - 1 === trailStop; // the first marker is the start
+      el.dataset.selected = String(on);
+      el.dataset.mode = mapMode;
+      marker.getElement().style.zIndex = on ? "30" : "20";
+    });
+  }, [trail, trailStop, mapMode]);
+
+  // --- Trail route ------------------------------------------------------------
+  // One geometry for both modes: the flat route here, the luminous 3D path in the Immersive layer.
+  const trailGeo = useMemo(() => (trail ? trailGeometry(trail) : null), [trail]);
+  const routeKey = trail && trailGeo ? `${trail.id}|${trail.mode}|${trailGeo.path.length}|${trail.stops.map((s) => s.placeId).join(",")}` : "";
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map || !map.getLayer("es-trail-line")) return;
+    const src = map.getSource("es-trail") as maplibregl.GeoJSONSource;
+    const est = map.getSource("es-trail-est") as maplibregl.GeoJSONSource;
+    if (!trailGeo) {
+      src.setData(emptyFC);
+      est.setData(emptyFC);
+      map.setPaintProperty("es-trail-flow", "line-opacity", 0);
+      return;
+    }
+    src.setData({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: trailGeo.path } });
+    est.setData({ type: "Feature", properties: {}, geometry: { type: "MultiLineString", coordinates: trailGeo.estimated } });
+    const set = (p: number) => {
+      map.setPaintProperty("es-trail-line", "line-gradient", routeGradient(trailGeo.colors, p));
+      map.setPaintProperty("es-trail-glow", "line-gradient", routeGradient(trailGeo.colors, p));
+    };
+    if (prefersReducedMotion() || lowPower) {
+      set(1);
+      map.setPaintProperty("es-trail-flow", "line-opacity", 0);
+      return;
+    }
+    // Draw the route in from the start, then keep a soft light flowing along it.
+    let raf = 0;
+    const t0 = performance.now();
+    let lastFlow = 0;
+    let step = 0;
+    const tick = (t: number) => {
+      raf = requestAnimationFrame(tick);
+      const k = Math.min(1, (t - t0) / 1800);
+      if (k < 1) return set(1 - (1 - k) ** 3);
+      if (lastFlow === 0) {
+        set(1);
+        map.setPaintProperty("es-trail-flow", "line-opacity", 0.85);
+      }
+      if (t - lastFlow > 70) {
+        lastFlow = t;
+        step = (step + 1) % FLOW_DASHES.length;
+        map.setPaintProperty("es-trail-flow", "line-dasharray", FLOW_DASHES[step]);
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- replays only when the route itself changes
+  }, [ready, routeKey, lowPower]);
+
+  useEffect(() => {
+    const layer = immersive.current;
+    if (!layer) return;
+    layer.setTrail(
+      trail && trailGeo
+        ? {
+            key: routeKey,
+            path: trailGeo.path,
+            colors: trailGeo.colors,
+            stops: trail.stops.map((s, i) => ({ lon: s.place.lon, lat: s.place.lat, color: TRAIL_COLORS[i % TRAIL_COLORS.length], selected: i === trailStop })),
+          }
+        : null,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- routeKey stands in for the route
+  }, [routeKey, trailStop, mapMode, immersiveVersion]);
+
+  useEffect(() => {
+    immersive.current?.setAnimate(!prefersReducedMotion() && !lowPower);
+  }, [lowPower, immersiveVersion]);
 
   // --- Frame new results, respecting user control ----------------------------
   useEffect(() => {
@@ -764,7 +940,7 @@ export function MapCanvas() {
     if (!map || !s.location) return;
     setShowResultsChip(false);
     const pts = s.trail
-      ? s.trail.stops.map((x) => [x.lon, x.lat] as [number, number])
+      ? [...trailGeometry(s.trail).bounds, ...s.trail.stops.map((x) => [x.place.lon, x.place.lat] as [number, number])]
       : s.orderedRecommendations().slice(0, 6).map((r) => [r.place.lon, r.place.lat] as [number, number]);
     if (!pts.length) return;
     const bounds = new maplibregl.LngLatBounds([s.location.lon, s.location.lat], [s.location.lon, s.location.lat]);
@@ -817,7 +993,7 @@ export function MapCanvas() {
       map.setLight({ anchor: "map", color: "#FFF0E4", intensity: 0.22, position: [1.35, 210, 38] });
       if (!map.getLayer("es-immersive")) {
         try {
-          const layer = new ImmersiveLayer({ animate: !reduce });
+          const layer = new ImmersiveLayer({ animate: !reduce && !useElsewhere.getState().lowPower });
           layer.onError = () => {
             if (map.getLayer("es-immersive")) map.removeLayer("es-immersive");
             immersive.current = null;

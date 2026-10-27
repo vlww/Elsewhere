@@ -91,6 +91,7 @@ const QLOO_CATEGORY_TAGS: [PlaceCategory, string[]][] = [
   ["arts_centre", ["art_center", "cultural_center", "arts_organization"]],
   ["community", ["community_center"]],
   ["plaza", ["plaza"]],
+  ["food", ["restaurant", "bakery", "fast_food_restaurant"]],
 ];
 const TAG_PREFIX = "urn:tag:category:place:";
 

@@ -50,6 +50,53 @@ const AURA_FADE_MS = 700;
 const WAVE_PERIOD_MS = 4200;
 const WAVE_REACH_M = 190;
 
+/** A Taste Trail as the 3D city draws it: the routed path and its stops, in order. */
+export interface TrailInput {
+  /** Changes when the route itself changes (replays the draw-in). */
+  key: string;
+  path: [number, number][];
+  /** Colour at each path vertex (route gradient). */
+  colors: string[];
+  stops: { lon: number; lat: number; color: string; selected: boolean }[];
+}
+
+interface TrailItem {
+  key: string;
+  group: THREE.Group;
+  core: THREE.Mesh;
+  glow: THREE.Mesh;
+  comet: THREE.Mesh;
+  cometHalo: THREE.Mesh;
+  curve: THREE.CatmullRomCurve3;
+  beacons: { column: THREE.Mesh; ring: THREE.Mesh; mat: THREE.MeshBasicMaterial; ringMat: THREE.MeshBasicMaterial; selected: boolean }[];
+  indexCount: number;
+  glowIndexCount: number;
+  center: [number, number];
+  bornAt: number;
+  dispose: () => void;
+}
+
+const TRAIL_LIFT_M = 3;
+const TRAIL_DRAW_MS = 2200;
+const COMET_PERIOD_MS = 9000;
+
+/** Vertical fade for light columns: bright at the base, gone at the top. */
+function columnTexture() {
+  const c = document.createElement("canvas");
+  c.width = 4;
+  c.height = 128;
+  const g = c.getContext("2d")!;
+  const grad = g.createLinearGradient(0, 128, 0, 0);
+  grad.addColorStop(0, "rgba(255,255,255,0.9)");
+  grad.addColorStop(0.35, "rgba(255,255,255,0.35)");
+  grad.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 4, 128);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 export interface TasteBuilding {
   id: string;
   lat: number;
@@ -206,6 +253,8 @@ export class ImmersiveLayer implements CustomLayerInterface {
   private haloTextures = new Map<string, THREE.Texture>();
   private sparkles?: THREE.Points;
   private animate: boolean;
+  private trail?: TrailItem;
+  private columnTex?: THREE.Texture;
   onError?: (e: unknown) => void;
 
   constructor(opts: { animate: boolean }) {
@@ -236,6 +285,9 @@ export class ImmersiveLayer implements CustomLayerInterface {
     for (const b of this.buildings.values()) b.dispose();
     for (const a of this.aura.values()) a.dispose();
     this.aura.clear();
+    this.trail?.dispose();
+    this.trail = undefined;
+    this.columnTex?.dispose();
     this.buildings.clear();
     [this.gemGeo, this.beamGeo, this.discGeo, this.puffGeo, this.bulbGeo].forEach((g) => g.dispose());
     this.shadowTex.dispose();
@@ -283,6 +335,7 @@ export class ImmersiveLayer implements CustomLayerInterface {
     for (const it of this.items.values()) it.group.position.copy(this.local(it.data.lon, it.data.lat));
     for (const b of this.buildings.values()) b.group.position.copy(this.local(...b.center));
     for (const a of this.aura.values()) a.mesh.position.copy(this.local(...a.center));
+    if (this.trail) this.trail.group.position.copy(this.local(...this.trail.center));
   }
 
   setPoints(points: ImmersivePoint[]) {
@@ -519,6 +572,148 @@ export class ImmersiveLayer implements CustomLayerInterface {
     };
   }
 
+  /** Lighter rendering for slower devices: no ambient animation (layers settle to their final state). */
+  setAnimate(on: boolean) {
+    this.animate = on;
+    this.map?.triggerRepaint();
+  }
+
+  setTrail(t: TrailInput | null) {
+    if (!this.map) return;
+    if (!t || t.path.length < 2) {
+      this.trail?.dispose();
+      this.trail = undefined;
+      this.map.triggerRepaint();
+      return;
+    }
+    if (!this.hasOrigin) this.setOrigin();
+    if (this.trail?.key !== t.key) {
+      this.trail?.dispose();
+      this.trail = this.buildTrail(t);
+    }
+    // Selection changes only restyle the beacons.
+    t.stops.forEach((s, i) => {
+      const b = this.trail!.beacons[i];
+      if (b) b.selected = s.selected;
+    });
+    this.map.triggerRepaint();
+  }
+
+  private buildTrail(t: TrailInput): TrailItem {
+    this.columnTex ??= columnTexture();
+    const owned: { dispose(): void }[] = [];
+    const track = <T extends { dispose(): void }>(x: T) => (owned.push(x), x);
+    const center: [number, number] = t.path[Math.floor(t.path.length / 2)];
+    const cm = maplibregl.MercatorCoordinate.fromLngLat(center, 0);
+    const ms = cm.meterInMercatorCoordinateUnits();
+    const toLocal = ([lon, lat]: [number, number], y: number) => {
+      const m = maplibregl.MercatorCoordinate.fromLngLat([lon, lat], 0);
+      return new THREE.Vector3((m.x - cm.x) / ms, y, (m.y - cm.y) / ms);
+    };
+    // Drop near-duplicate vertices so the curve doesn't kink.
+    const pts: THREE.Vector3[] = [];
+    const cols: string[] = [];
+    t.path.forEach((p, i) => {
+      const v = toLocal(p, TRAIL_LIFT_M);
+      if (!pts.length || pts[pts.length - 1].distanceTo(v) > 1.5) {
+        pts.push(v);
+        cols.push(t.colors[i] ?? t.colors[t.colors.length - 1]);
+      }
+    });
+    if (pts.length < 2) pts.push(pts[0].clone().add(new THREE.Vector3(0.5, 0, 0)));
+    const curve = new THREE.CatmullRomCurve3(pts, false, "centripetal", 0.1);
+    const length = curve.getLength();
+    const segs = Math.min(1600, Math.max(64, Math.round(length / 3)));
+
+    // Colour along the tube from the per-vertex route gradient (by arc length).
+    const lengths = [0];
+    for (let i = 1; i < pts.length; i++) lengths.push(lengths[i - 1] + pts[i].distanceTo(pts[i - 1]));
+    const total = lengths[lengths.length - 1] || 1;
+    const colorAt = (u: number) => {
+      const d = u * total;
+      const k = lengths.findIndex((x) => x >= d);
+      if (k <= 0) return new THREE.Color(cols[0]);
+      const f = (d - lengths[k - 1]) / (lengths[k] - lengths[k - 1] || 1);
+      return new THREE.Color(cols[k - 1]).lerp(new THREE.Color(cols[k]), f);
+    };
+    // The core runs a shade deeper than the pastel stops so it holds up against the pale city.
+    const DEEPEN = new THREE.Color("#9A4C7E");
+    const tube = (radius: number, radial: number, deepen: number) => {
+      const g = track(new THREE.TubeGeometry(curve, segs, radius, radial, false));
+      const colors = new Float32Array(g.attributes.position.count * 3);
+      for (let i = 0; i <= segs; i++) {
+        const c = colorAt(i / segs).lerp(DEEPEN, deepen);
+        for (let j = 0; j <= radial; j++) colors.set([c.r, c.g, c.b], (i * (radial + 1) + j) * 3);
+      }
+      g.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+      return g;
+    };
+    const coreGeo = tube(1.8, 8, 0.3);
+    const glowGeo = tube(6, 10, 0);
+    const core = new THREE.Mesh(coreGeo, track(new THREE.MeshBasicMaterial({ vertexColors: true })));
+    const glow = new THREE.Mesh(
+      glowGeo,
+      track(new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.28, depthWrite: false, blending: THREE.AdditiveBlending })),
+    );
+    const group = new THREE.Group();
+    group.add(glow, core);
+
+    // A small light that travels the route, so its direction reads at a glance.
+    const comet = new THREE.Mesh(track(new THREE.SphereGeometry(2.6, 16, 10)), track(new THREE.MeshBasicMaterial({ color: 0xfff6e0 })));
+    const cometHalo = new THREE.Mesh(
+      this.discGeo,
+      track(new THREE.MeshBasicMaterial({ map: this.haloTex("#FFF1C9"), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })),
+    );
+    cometHalo.rotation.x = -Math.PI / 2;
+    cometHalo.scale.set(16, 16, 1);
+    group.add(comet, cometHalo);
+
+    // Light columns over each stop.
+    const columnGeo = track(new THREE.CylinderGeometry(3.2, 3.2, 1, 20, 1, true));
+    columnGeo.translate(0, 0.5, 0);
+    const beacons = t.stops.map((s) => {
+      const mat = track(
+        new THREE.MeshBasicMaterial({ color: s.color, map: this.columnTex!, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }),
+      );
+      const column = new THREE.Mesh(columnGeo, mat);
+      const ringMat = track(new THREE.MeshBasicMaterial({ map: this.haloTex(s.color), transparent: true, depthWrite: false }));
+      const ring = new THREE.Mesh(this.discGeo, ringMat);
+      ring.rotation.x = -Math.PI / 2;
+      const at = toLocal([s.lon, s.lat], 0);
+      column.position.copy(at);
+      ring.position.copy(at).setY(0.4);
+      group.add(column, ring);
+      return { column, ring, mat, ringMat, selected: s.selected };
+    });
+
+    group.position.copy(this.local(...center));
+    this.scene.add(group);
+    const indexCount = coreGeo.index!.count;
+    const glowIndexCount = glowGeo.index!.count;
+    if (this.animate) {
+      coreGeo.setDrawRange(0, 0);
+      glowGeo.setDrawRange(0, 0);
+    }
+    return {
+      key: t.key,
+      group,
+      core,
+      glow,
+      comet,
+      cometHalo,
+      curve,
+      beacons,
+      indexCount,
+      glowIndexCount,
+      center,
+      bornAt: performance.now(),
+      dispose: () => {
+        this.scene.remove(group);
+        owned.forEach((x) => x.dispose());
+      },
+    };
+  }
+
   setAura(list: AuraBuildingInput[]) {
     if (!this.map) return;
     if (!this.hasOrigin) this.setOrigin();
@@ -598,7 +793,7 @@ export class ImmersiveLayer implements CustomLayerInterface {
   }
 
   render(gl: WebGL2RenderingContext, args: CustomRenderMethodInput) {
-    if (!this.map || !this.renderer || (!this.items.size && !this.buildings.size && !this.aura.size)) return;
+    if (!this.map || !this.renderer || (!this.items.size && !this.buildings.size && !this.aura.size && !this.trail)) return;
     const zoom = this.map.getZoom();
     const lat = this.map.getCenter().lat;
     // Metres per CSS pixel at this zoom (512px tiles).
@@ -670,6 +865,33 @@ export class ImmersiveLayer implements CustomLayerInterface {
       a.mat.emissiveIntensity = (0.08 + 0.42 * bump * bump) * a.k * eased * 1.6;
     }
 
+    // Trail: draws itself in from the start, then a light keeps travelling along it.
+    if (this.trail) {
+      const tr = this.trail;
+      const drawn = this.animate ? Math.min(1, (now - tr.bornAt) / TRAIL_DRAW_MS) : 1;
+      const eased = 1 - (1 - drawn) ** 3;
+      const snap = (n: number) => Math.floor((n * eased) / 6) * 6; // whole triangles
+      (tr.core.geometry as THREE.BufferGeometry).setDrawRange(0, drawn >= 1 ? tr.indexCount : snap(tr.indexCount));
+      (tr.glow.geometry as THREE.BufferGeometry).setDrawRange(0, drawn >= 1 ? tr.glowIndexCount : snap(tr.glowIndexCount));
+      const u = drawn < 1 ? eased : ((now - tr.bornAt - TRAIL_DRAW_MS) % COMET_PERIOD_MS) / COMET_PERIOD_MS;
+      const head = tr.curve.getPointAt(Math.min(0.999, Math.max(0, u)));
+      tr.comet.position.copy(head);
+      tr.cometHalo.position.copy(head).setY(0.6);
+      tr.comet.visible = tr.cometHalo.visible = this.animate;
+      const glowPulse = this.animate ? 0.42 + Math.sin(t * 1.3) * 0.08 : 0.45;
+      (tr.glow.material as THREE.MeshBasicMaterial).opacity = glowPulse;
+      tr.beacons.forEach((b, i) => {
+        // Beacons rise as the route reaches them.
+        const reach = Math.min(1, Math.max(0, (eased - i / Math.max(1, tr.beacons.length)) * 3));
+        const h = (b.selected ? 120 : 70) * (this.animate ? reach : 1);
+        b.column.scale.set(b.selected ? 1.4 : 1, Math.max(0.01, h), b.selected ? 1.4 : 1);
+        b.mat.opacity = (b.selected ? 0.95 : 0.6) * (this.animate ? reach : 1);
+        const r = (b.selected ? 26 : 16) * (this.animate && b.selected ? 1 + Math.sin(t * 2.4) * 0.08 : 1);
+        b.ring.scale.set(r, r, 1);
+        b.ringMat.opacity = b.selected ? 1 : 0.75;
+      });
+    }
+
     if (this.sparkles) {
       const a = this.sparkles.userData.anchor as Item;
       this.sparkles.position.copy(a.group.position);
@@ -686,7 +908,7 @@ export class ImmersiveLayer implements CustomLayerInterface {
     this.camera.projectionMatrix = new THREE.Matrix4().fromArray(Array.from(args.defaultProjectionData.mainMatrix as ArrayLike<number>)).multiply(l);
     this.renderer.resetState();
     this.renderer.render(this.scene, this.camera);
-    const settling = [...this.buildings.values()].some((b) => now - b.bornAt < 1200) || [...this.aura.values()].some((a) => now - a.bornAt < AURA_FADE_MS || a.leaveAt !== undefined);
+    const settling = (this.trail ? now - this.trail.bornAt < TRAIL_DRAW_MS + 50 : false) || [...this.buildings.values()].some((b) => now - b.bornAt < 1200) || [...this.aura.values()].some((a) => now - a.bornAt < AURA_FADE_MS || a.leaveAt !== undefined);
     if (this.animate || settling) this.map.triggerRepaint();
   }
 }

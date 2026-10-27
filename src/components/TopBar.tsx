@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Bookmark, MapPin, Search, Sparkles } from "lucide-react";
+import { Bookmark, Footprints, MapPin, Search, Sparkles } from "lucide-react";
 import { useElsewhere } from "@/store/useElsewhere";
 import { Chip, cx } from "@/components/ui/primitives";
 import { LocationSearch } from "./LocationGate";
@@ -13,12 +13,14 @@ export function TopBar() {
   const setPanel = useElsewhere((s) => s.setPanel);
   const savedCount = useElsewhere((s) => Object.keys(s.saved).length);
   const tasteCount = useElsewhere((s) => s.tasteSignals.length);
+  const trailStops = useElsewhere((s) => s.trail?.stops.length ?? 0);
   const [editing, setEditing] = useState(false);
 
   const nav = [
     { id: "results" as const, label: "Explore", icon: Search },
     { id: "saved" as const, label: "Saved", icon: Bookmark, count: savedCount },
     { id: "taste" as const, label: "Taste", icon: Sparkles, count: tasteCount },
+    { id: "trail" as const, label: "Trail", icon: Footprints, count: trailStops },
   ];
 
   return (

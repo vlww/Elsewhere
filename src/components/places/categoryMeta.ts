@@ -14,6 +14,7 @@ import {
   Palette,
   Trees,
   Users,
+  UtensilsCrossed,
   type LucideIcon,
 } from "lucide-react";
 import type { PlaceCategory } from "@/types";
@@ -36,5 +37,6 @@ export const CATEGORY_META: Record<PlaceCategory, { icon: LucideIcon; color: str
   music: { icon: Disc3, color: "#EDB497", art: ["#FDEDE4", "#EDB497", "#B97A8F"], shape: "pin" },
   community: { icon: Users, color: "#E9CDA9", art: ["#FBF2E6", "#E9CDA9", "#C59A79"], shape: "pin" },
   plaza: { icon: LayoutGrid, color: "#E9D9C6", art: ["#FBF6EF", "#E9D9C6", "#C8AE95"], shape: "round" },
+  food: { icon: UtensilsCrossed, color: "#F5B7A0", art: ["#FDEBE2", "#F5B7A0", "#D9806B"], shape: "pin" },
   other: { icon: MapPin, color: "#E2D6DE", art: ["#F8F3F5", "#E2D6DE", "#A99AA6"], shape: "pin" },
 };

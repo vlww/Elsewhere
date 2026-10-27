@@ -161,7 +161,10 @@ html, body {
 .es-marker[data-mode="immersive"] .pin svg { width: 12px; height: 12px; }
 .es-marker[data-mode="immersive"] .rank { top: -8px; right: -10px; }
 .es-marker[data-mode="immersive"][data-selected="true"] .pin { width: 30px; height: 30px; }
-.es-marker[data-dimmed="true"] { opacity: 0.45; }
+/* MapLibre writes an inline opacity on marker elements (for 3D occlusion), so dim the contents instead. */
+.es-marker > * { transition: opacity var(--motion-short), filter var(--motion-short); }
+.es-marker[data-dimmed="true"] > * { opacity: 0.45; }
+.es-marker[data-dimmed="true"]:not(:hover):not(:focus-visible) > .label { opacity: 0; }
 
 /* Taste Layer: highlighted places glow in their interest colour; the rest recede (never hidden). */
 .es-marker .label .why { display: flex; align-items: center; gap: 4px; margin-top: 4px; font: 500 10.5px/1.1 var(--font-sans); color: var(--taste-deep, var(--color-rose-deep)); }
@@ -176,9 +179,9 @@ html, body {
 .es-marker[data-taste="strong"] .rank { background: var(--taste-deep); }
 .es-marker[data-taste="strong"] .label { opacity: 1; transform: translateX(-50%); }
 .es-marker[data-taste="strong"]:not(:hover):not(:focus-visible):not([data-selected="true"]) .label .why { display: none; }
-.es-marker[data-taste="muted"] { opacity: 0.55; }
+.es-marker[data-taste="muted"] > * { opacity: 0.55; }
 .es-marker[data-taste="muted"] .pin { filter: saturate(0.35); }
-.es-marker[data-taste="muted"]:hover, .es-marker[data-taste="muted"]:focus-visible { opacity: 1; }
+.es-marker:is([data-taste="muted"], [data-dimmed="true"]):is(:hover, :focus-visible) > * { opacity: 1; }
 .es-marker[data-taste="muted"]:hover .pin { filter: none; }
 /* Immersive + Taste: the lit 3D building and its gem are the marker; the pin shrinks to a ground dot. */
 .es-marker[data-mode="immersive"]:is([data-taste="strong"], [data-taste="notable"]) .pin,
@@ -199,7 +202,37 @@ html, body {
 .es-user-dot::after { content: ""; position: absolute; inset: -3px; border-radius: 999px; background: var(--color-rose); animation: var(--animate-pulse-soft); z-index: -1; }
 
 .es-saved-pin { width: 22px; height: 22px; border-radius: 999px; display: grid; place-items: center; background: var(--color-aubergine); color: var(--color-butter); border: 2px solid #fff; box-shadow: var(--shadow-card); cursor: pointer; }
-.es-trail-stop { width: 26px; height: 26px; border-radius: 999px; display: grid; place-items: center; background: var(--color-aubergine); color: var(--color-ivory); font: 600 12px var(--font-sans); border: 2px solid #fff; box-shadow: var(--shadow-card); }
+/* Taste Trail stops: numbered teardrops in the route's colours, rising in as the route draws. */
+.es-trail-stop { display: grid; place-items: center; cursor: pointer; background: none; border: 0; padding: 0; }
+.es-trail-stop .num {
+  display: grid; place-items: center;
+  width: 32px; height: 32px; border-radius: 999px 999px 999px 4px; transform: rotate(-45deg);
+  background: var(--stop); border: 2.5px solid #fff;
+  font: 700 13px/1 var(--font-sans); color: var(--color-aubergine);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--stop) 35%, transparent), 0 10px 18px -8px rgb(89 52 82 / 0.55);
+  animation: stop-in 520ms var(--ease-out-soft) both; animation-delay: var(--delay, 0ms);
+  transition: transform var(--motion-medium) var(--ease-out-soft), box-shadow var(--motion-medium);
+}
+.es-trail-stop .label {
+  position: absolute; left: 50%; top: calc(100% + 8px); transform: translateX(-50%) translateY(-2px);
+  white-space: nowrap; pointer-events: none;
+  font: 600 12px/1 var(--font-sans); color: var(--color-aubergine);
+  background: rgb(255 249 244 / 0.96); padding: 6px 10px; border-radius: 999px;
+  box-shadow: 0 0 0 1.5px var(--stop), var(--shadow-card);
+  opacity: 0; transition: opacity var(--motion-short), transform var(--motion-short);
+}
+.es-trail-stop:hover .num, .es-trail-stop:focus-visible .num { transform: rotate(-45deg) scale(1.1); }
+.es-trail-stop:hover .label, .es-trail-stop:focus-visible .label, .es-trail-stop[data-selected="true"] .label { opacity: 1; transform: translateX(-50%); }
+.es-trail-stop[data-selected="true"] .num {
+  width: 40px; height: 40px; font-size: 15px;
+  box-shadow: 0 0 0 5px #fff, 0 0 0 10px color-mix(in srgb, var(--stop) 55%, transparent), 0 0 34px 10px color-mix(in srgb, var(--stop) 55%, transparent);
+}
+.es-trail-stop .num > span { transform: rotate(45deg); }
+.es-trail-start {
+  font: 700 10px/1 var(--font-sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-ivory);
+  background: var(--color-aubergine); padding: 5px 8px; border-radius: 999px; border: 2px solid #fff; box-shadow: var(--shadow-card);
+}
+@keyframes stop-in { from { opacity: 0; transform: rotate(-45deg) translateY(-12px) scale(0.5); } to { opacity: 1; transform: rotate(-45deg); } }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }

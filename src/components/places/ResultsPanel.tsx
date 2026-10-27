@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Footprints, RefreshCw, Sparkles, X } from "lucide-react";
+import { Footprints, RefreshCw, Sparkles } from "lucide-react";
 import { useElsewhere } from "@/store/useElsewhere";
 import type { PlaceCategory } from "@/types";
 import { cx, IconButton, Segmented } from "@/components/ui/primitives";
@@ -25,40 +25,30 @@ function Skeleton() {
   );
 }
 
+/** A compact link between the results and the trail: open the current one, or start one. */
 function TrailCard() {
   const trail = useElsewhere((s) => s.trail);
-  const clearTrail = useElsewhere((s) => s.clearTrail);
-  const select = useElsewhere((s) => s.select);
-  if (!trail) return null;
+  const result = useElsewhere((s) => s.result);
+  const setPanel = useElsewhere((s) => s.setPanel);
+  if (!trail && !result?.recommendations.length) return null;
   return (
-    <section aria-label="Taste trail" className="rounded-[var(--radius-lg)] bg-gradient-to-br from-peach via-sunset/40 to-lavender/60 p-4 ring-1 ring-white/60 animate-rise">
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-plum/80">
-            <Footprints size={12} /> Taste Trail · {trail.totalWalkMin} min walking
-          </p>
-          <h3 className="mt-1 font-serif text-[22px] leading-tight text-aubergine">{trail.title}</h3>
-        </div>
-        <IconButton label="Clear trail" onClick={clearTrail} className="-mr-2 -mt-1 h-8 w-8">
-          <X size={14} />
-        </IconButton>
-      </div>
-      <ol className="mt-3 space-y-2">
-        {trail.stops.map((s, i) => (
-          <li key={s.placeId}>
-            <button onClick={() => select(s.placeId, { focus: true })} className="flex w-full gap-2.5 text-left">
-              <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-aubergine text-[10.5px] font-semibold text-ivory">{i + 1}</span>
-              <span className="min-w-0 text-[13px] leading-snug">
-                <span className="font-semibold text-aubergine">{s.name}</span>
-                <span className="text-ink-soft"> · {s.walkFromPrevMin} min {i === 0 ? "from start" : "on foot"}</span>
-                <span className="block text-[12px] text-plum/90">{s.why}</span>
-              </span>
-            </button>
-          </li>
-        ))}
-      </ol>
-      <p className="mt-3 text-[11.5px] leading-snug text-plum/80">{trail.synthesisNote}</p>
-    </section>
+    <button
+      onClick={() => setPanel("trail")}
+      className="flex w-full items-center gap-3 rounded-[var(--radius-lg)] bg-[linear-gradient(110deg,#FCE3EA,#EEE6FB_55%,#FDEBDD)] p-3 text-left ring-1 ring-white/70 transition-transform hover:-translate-y-0.5"
+    >
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/80 text-rose-deep">
+        <Footprints size={16} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[10.5px] font-semibold uppercase tracking-[0.14em] text-plum/70">Taste Trail</span>
+        <span className="block truncate font-serif text-[17px] leading-tight text-aubergine">
+          {trail ? trail.story?.title ?? trail.title : "Turn a few of these into an outing"}
+        </span>
+        <span className="block truncate text-[11.5px] text-ink-soft">
+          {trail ? trail.stops.map((s) => s.place.name).join(" → ") : "Routed, timed, and shaped by your interests"}
+        </span>
+      </span>
+    </button>
   );
 }
 

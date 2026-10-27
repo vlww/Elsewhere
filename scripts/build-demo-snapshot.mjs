@@ -24,8 +24,8 @@ const KEEP = [
 
 const RELEVANT = (t) =>
   t.name &&
-  (["cafe", "library", "arts_centre", "coworking_space", "community_centre", "cinema", "studio"].includes(t.amenity) ||
-    ["books", "tea", "music", "art", "stationery"].includes(t.shop) ||
+  (["cafe", "library", "arts_centre", "coworking_space", "community_centre", "cinema", "studio", "restaurant", "fast_food", "food_court", "ice_cream"].includes(t.amenity) ||
+    ["books", "tea", "music", "art", "stationery", "bakery", "pastry", "deli"].includes(t.shop) ||
     ["park", "garden"].includes(t.leisure) ||
     ["gallery", "museum"].includes(t.tourism) ||
     (t.place === "square"));

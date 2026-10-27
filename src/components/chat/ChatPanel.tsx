@@ -13,6 +13,8 @@ const STARTERS = [
   "I have an hour before class. Somewhere peaceful, preferably outdoors.",
   "Surprise me — somewhere I wouldn't normally go.",
   "Make the map more colorful around places I'd probably love.",
+  "Plan a creative afternoon around my interests.",
+  "Find a bookstore, somewhere to sit outside, and somewhere inexpensive to eat.",
 ];
 
 const NOTE_ICON: Record<ChatNote["kind"], typeof MapIcon> = {

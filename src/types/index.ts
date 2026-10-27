@@ -19,6 +19,7 @@ export const PLACE_CATEGORIES = [
   "music",
   "community",
   "plaza",
+  "food",
   "other",
 ] as const;
 export const PlaceCategory = z.enum(PLACE_CATEGORIES);
@@ -223,22 +224,98 @@ export interface SearchResult {
 // Trails
 // ---------------------------------------------------------------------------
 
+export const TRAIL_MODES = ["walking", "cycling", "driving", "transit"] as const;
+export type TrailMode = (typeof TRAIL_MODES)[number];
+
+/**
+ * What the user asked for, kept with the trail so revisions change only what they touch.
+ * Slots are ordered stops; each lists the kinds of place that would satisfy it.
+ */
+export const TrailSpecSchema = z.object({
+  slots: z.array(z.array(PlaceCategory).min(1)).min(1).max(5).optional(),
+  /** Used when no slots are given. */
+  stops: z.number().int().min(2).max(5).default(3),
+  /** Visit the slots in the order given (the user listed them in sequence). */
+  keepOrder: z.boolean().default(false),
+  mode: z.enum(TRAIL_MODES).default("walking"),
+  /** Total time available, travel and stops included. */
+  timeBudgetMin: z.number().min(20).max(720).optional(),
+  /** Local start time "HH:MM"; defaults to now. */
+  startTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  maxPriceLevel: z.number().int().min(1).max(4).optional(),
+  /** Longest single hop between stops. */
+  maxLegMin: z.number().min(3).max(60).optional(),
+  endNearStart: z.boolean().default(false),
+  excludeCategories: z.array(PlaceCategory).default([]),
+  excludePlaceIds: z.array(z.string()).default([]),
+  mustIncludePlaceIds: z.array(z.string()).max(5).default([]),
+  /** Reach past the obvious top matches (still within constraints and cultural evidence). */
+  surprise: z.boolean().default(false),
+  /** Free-text mood words the user used ("creative", "slow"); steer theme and listing keyword matches only. */
+  mood: z.array(z.string().max(30)).max(6).default([]),
+  useTaste: z.boolean().default(true),
+  requireOutdoor: z.boolean().default(false),
+  /** Minutes the user asked to spend at particular stops, by place id. */
+  stay: z.record(z.string(), z.number().min(5).max(300)).default({}),
+});
+export type TrailSpec = z.infer<typeof TrailSpecSchema>;
+
+export interface TrailLeg {
+  distanceM: number;
+  durationMin: number;
+  /** Street geometry [lon, lat] from the routing provider; absent when only estimated. */
+  geometry?: [number, number][];
+  source: "osrm" | "estimate";
+}
+
 export interface TrailStop {
   placeId: string;
-  name: string;
-  lat: number;
-  lon: number;
-  category: PlaceCategory;
-  walkFromPrevMin: number;
-  why: string;
+  order: number;
+  /** The provider's record (facts only), so cards work even if the place isn't in the current results. */
+  place: Place;
+  /** The recommendation evidence this stop was chosen from. */
+  rec: Recommendation;
+  /** Which requested slot it fills. */
+  slot: number;
+  /** Elsewhere's estimate of time spent here (always labelled as an estimate). */
+  plannedMin: number;
+  /** Local "HH:MM" estimates. */
+  arriveAt: string;
+  leaveAt: string;
+  /** Open state at the planned arrival, from listed hours (unknown when not listed). */
+  openAtArrival: OpenState;
+  /** Deterministic, evidence-derived reasons (Elsewhere's synthesis). */
+  reason: string;
+  activity: string;
+  culturalRationale?: string;
+  /** Leg from the previous stop (or the start). */
+  legIn: TrailLeg;
 }
 
 export interface TasteTrail {
   id: string;
+  createdAt: string;
+  /** Deterministic title/theme/summary; the guide may layer `story` on top. */
   title: string;
+  theme: string;
+  summary: string;
+  story?: { title?: string; summary?: string; notes: Record<string, string> };
+  start: { name: string; lat: number; lon: number };
+  spec: TrailSpec;
+  mode: TrailMode;
   stops: TrailStop[];
-  totalWalkMin: number;
-  synthesisNote: string;
+  /** Back to the start, when the spec asks to finish near it. */
+  legOut?: TrailLeg;
+  startAt: string;
+  endAt: string;
+  totalMin: number;
+  travelMin: number;
+  stayMin: number;
+  routing: { provider: string; live: boolean; effectiveMode: "walking" | "cycling" | "driving"; note?: string };
+  cultural: { mode: "live" | "demo" | "off"; status: "ok" | "no-signals" | "error"; matchedStops: number; message?: string };
+  assumptions: string[];
+  /** What the last plan or revision changed, in a sentence. */
+  changeNote?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -302,6 +379,7 @@ export type ClientAction =
   | { type: "taste_layer"; on: boolean }
   | { type: "compare"; placeIds: string[] }
   | { type: "trail"; trail: TasteTrail }
+  | { type: "trail_story"; trailId: string; story: NonNullable<TasteTrail["story"]> }
   | { type: "entity_choices"; query: string; entities: CulturalEntity[] }
   | { type: "need_location" };
 

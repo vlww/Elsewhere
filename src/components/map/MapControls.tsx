@@ -1,6 +1,6 @@
 "use client";
 
-import { LocateFixed, Minus, Plus } from "lucide-react";
+import { Gauge, LocateFixed, Minus, Plus } from "lucide-react";
 import { useElsewhere } from "@/store/useElsewhere";
 import { IconButton } from "@/components/ui/primitives";
 import { mapRef, prefersReducedMotion } from "./mapRef";
@@ -33,6 +33,8 @@ function CompassNeedle() {
 export function MapControls() {
   const mapMode = useElsewhere((s) => s.mapMode);
   const location = useElsewhere((s) => s.location);
+  const lowPower = useElsewhere((s) => s.lowPower);
+  const setLowPower = useElsewhere((s) => s.setLowPower);
   const d = () => (prefersReducedMotion() ? 0 : 500);
 
   return (
@@ -56,6 +58,14 @@ export function MapControls() {
           onClick={() => location && mapRef.current?.flyTo({ center: [location.lon, location.lat], zoom: 15.2, duration: prefersReducedMotion() ? 0 : 1000 })}
         >
           <LocateFixed size={16} />
+        </IconButton>
+        <IconButton
+          label={lowPower ? "Effects reduced — turn full effects back on" : "Reduce effects (lighter 3D, no ambient animation)"}
+          aria-pressed={lowPower}
+          onClick={() => setLowPower(!lowPower)}
+          className={lowPower ? "bg-aubergine/10 text-rose-deep" : undefined}
+        >
+          <Gauge size={16} />
         </IconButton>
       </div>
     </div>

@@ -27,12 +27,14 @@ export function PlaceDetail() {
   const id = useElsewhere((s) => s.selectedPlaceId);
   const open = useElsewhere((s) => s.detailOpen);
   const result = useElsewhere((s) => s.result);
+  const trail = useElsewhere((s) => s.trail);
   const saved = useElsewhere((s) => s.saved);
   const tasteOn = useElsewhere((s) => s.lensMode === "taste" && s.tasteSignals.length > 0);
   const { closeDetail, select, toggleSave, sendMessage, setMobileTab } = useElsewhere.getState();
   const closeRef = useRef<HTMLButtonElement>(null);
 
-  const rec: Recommendation | undefined = result?.recommendations.find((r) => r.place.id === id);
+  const rec: Recommendation | undefined =
+    result?.recommendations.find((r) => r.place.id === id) ?? trail?.stops.find((s) => s.placeId === id)?.rec;
   const place = rec?.place ?? (id ? saved[id]?.place : undefined);
 
   const nearby =
