@@ -4,7 +4,7 @@
    Elsewhere design tokens — sunset pastels balanced with warm neutrals
    ------------------------------------------------------------------------ */
 @theme {
-  --font-serif: var(--font-serif), "Iowan Old Style", Georgia, serif;
+  --font-serif: var(--font-serif), "UnifrakturMaguntia", "Old English Text MT", Georgia, serif;
   --font-sans: var(--font-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 
   --color-ivory: #fff9f4;
@@ -70,6 +70,10 @@ html, body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
+
+/* Headings use a blackletter display face with no italic: emphasis is a colour accent, never a faked slant. */
+.font-serif em, .font-serif i { font-style: normal; color: var(--color-rose-deep); }
+.font-serif { font-synthesis: none; }
 
 ::selection { background: color-mix(in srgb, var(--color-sunset) 60%, transparent); }
 

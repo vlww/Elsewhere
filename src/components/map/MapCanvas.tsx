@@ -1044,7 +1044,7 @@ export function MapCanvas() {
       <div ref={container} className="h-full w-full" aria-label="Map of places" role="region" />
       {!ready && (
         <div className="pointer-events-none absolute inset-0 grid place-items-center bg-gradient-to-br from-ivory via-peach/70 to-lavender/50">
-          <p className="shimmer-text font-serif text-2xl italic">Drawing the neighbourhood…</p>
+          <p className="shimmer-text font-serif text-2xl">Drawing the neighbourhood…</p>
         </div>
       )}
       <div className="pointer-events-none absolute inset-x-0 top-20 z-10 flex justify-center gap-2 lg:top-[84px]">
