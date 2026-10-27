@@ -1,18 +1,24 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import * as maplibregl from "maplibre-gl";
 import type { StyleSpecification } from "@maplibre/maplibre-gl-style-spec";
-import { Bookmark, Undo2, Crosshair } from "lucide-react";
+import { Bookmark, Undo2, Crosshair, Sparkles } from "lucide-react";
 import { useElsewhere } from "@/store/useElsewhere";
 import type { Recommendation } from "@/types";
 import { CATEGORY_LABEL, CATEGORY_META } from "@/components/places/categoryMeta";
-import { BASE_STYLE_URL, buildElsewhereStyle, IMMERSIVE_SKY } from "./mapStyle";
-import { ImmersiveLayer } from "./ImmersiveLayer";
+import type { TasteHighlight } from "@/lib/taste/highlights";
+import { useTasteHighlights } from "./useTasteHighlights";
+import { BASE_STYLE_URL, BUILDING_3D_COLOR, BUILDING_3D_COLOR_MUTED, buildElsewhereStyle, IMMERSIVE_SKY, TASTE_SKY } from "./mapStyle";
+import { ImmersiveLayer, type TasteBuilding } from "./ImmersiveLayer";
+import { findFootprints, type Footprint } from "./footprints";
 import { mapRef, panelPadding, prefersReducedMotion } from "./mapRef";
 
 const MARKER_LIMIT = 14;
+/** Immersive draws the 3D city, which the basemap only has from z14; further out it's an empty plain. */
+const IMMERSIVE_MIN_ZOOM = 14;
+const TASTE_BUILDING_LIMIT = 16;
 // Copied from node_modules by scripts/copy-maplibre-worker.mjs.
 maplibregl.setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");
 const DEMO_CENTER: [number, number] = [-73.99735, 40.73085];
@@ -33,20 +39,40 @@ function circlePolygon(lat: number, lon: number, radiusM: number) {
 const emptyFC = { type: "FeatureCollection" as const, features: [] };
 
 /** The top recommendations as floating 3D markers, in the same order and filter as the DOM markers. */
-function immersivePoints() {
+function immersivePoints(highlights: Map<string, TasteHighlight>, footprints: Map<string, Footprint | null>) {
   const s = useElsewhere.getState();
+  const layerOn = s.tasteLayer && highlights.size > 0;
   return s
     .orderedRecommendations()
     .filter((r) => !s.hiddenCategories.includes(r.place.category))
     .slice(0, 10)
-    .map((r) => ({
-      id: r.place.id,
-      lat: r.place.lat,
-      lon: r.place.lon,
-      color: CATEGORY_META[r.place.category].color,
-      selected: r.place.id === s.selectedPlaceId,
-      isNew: true,
-    }));
+    .map((r) => {
+      const h = highlights.get(r.place.id);
+      const fp = h ? footprints.get(r.place.id) : undefined;
+      return {
+        id: r.place.id,
+        lat: r.place.lat,
+        lon: r.place.lon,
+        color: h?.color ?? CATEGORY_META[r.place.category].color,
+        selected: r.place.id === s.selectedPlaceId,
+        isNew: true,
+        // Float over the taste building drawn for this place (pavilions are 12 m).
+        liftM: h ? (fp ? Math.max(fp.heightM, 7) : 12) + 6 : 0,
+        muted: layerOn && !h,
+      };
+    });
+}
+
+function inPolygon(lon: number, lat: number, g: GeoJSON.Geometry) {
+  const rings = g.type === "Polygon" ? [g.coordinates[0]] : g.type === "MultiPolygon" ? g.coordinates.map((p) => p[0]) : [];
+  return rings.some((ring) => {
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i], [xj, yj] = ring[j];
+      if (yi > lat !== yj > lat && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  });
 }
 
 export function MapCanvas() {
@@ -60,6 +86,10 @@ export function MapCanvas() {
   const extraMarkers = useRef<maplibregl.Marker[]>([]);
   const userMarker = useRef<maplibregl.Marker | null>(null);
   const immersive = useRef<ImmersiveLayer | null>(null);
+  const footprints = useRef(new Map<string, Footprint | null>());
+  const [footprintVersion, setFootprintVersion] = useState(0);
+  const [immersiveVersion, setImmersiveVersion] = useState(0);
+  const highlightRef = useRef<TasteHighlight[]>([]);
   const userMovedAt = useRef(0);
   const [attempt, setAttempt] = useState(0);
 
@@ -78,7 +108,14 @@ export function MapCanvas() {
   const searchStartedAt = useElsewhere((s) => s.searchStartedAt);
   const trail = useElsewhere((s) => s.trail);
   const saved = useElsewhere((s) => s.saved);
+  const tasteLayer = useElsewhere((s) => s.tasteLayer);
 
+  // The Taste Layer's highlights: one list, drawn by whichever mode is active.
+  const highlights = useTasteHighlights();
+  const highlightById = useMemo(() => new Map(highlights.map((h) => [h.placeId, h])), [highlights]);
+  useEffect(() => {
+    highlightRef.current = highlights;
+  }, [highlights]);
   // --- Create the map -------------------------------------------------------
   useEffect(() => {
     if (!container.current) return;
@@ -129,6 +166,16 @@ export function MapCanvas() {
       map.on("rotatestart", markUserMove);
       map.on("pitchstart", markUserMove);
       map.on("error", (e) => console.warn("[map]", e.error?.message));
+      // The compass reads these, so it turns with the camera without re-rendering React every frame.
+      const syncCompass = () => {
+        if (!map) return;
+        const root = document.documentElement.style;
+        root.setProperty("--map-bearing", String(map.getBearing()));
+        root.setProperty("--map-pitch", String(map.getPitch()));
+      };
+      map.on("rotate", syncCompass);
+      map.on("pitch", syncCompass);
+      map.on("load", syncCompass);
       map.on("load", () => {
         if (!map) return;
         map.addSource("es-radius", { type: "geojson", data: emptyFC });
@@ -162,6 +209,131 @@ export function MapCanvas() {
           filter: ["!", ["has", "point_count"]],
           paint: { "circle-color": ["get", "color"], "circle-radius": 5.5, "circle-stroke-color": "#FFFFFF", "circle-stroke-width": 1.5 },
         });
+        // Taste Layer (Explore): a soft wash where matches cluster, tinted real footprints, and halos.
+        // Inserted under the basemap labels so streets and names stay readable.
+        const beforeLabels = map.getStyle().layers.find((l) => l.type === "symbol")?.id;
+        map.addSource("es-taste-pts", { type: "geojson", data: emptyFC });
+        map.addSource("es-taste-fp", { type: "geojson", data: emptyFC });
+        map.addLayer(
+          {
+            id: "es-taste-heat",
+            type: "heatmap",
+            source: "es-taste-pts",
+            maxzoom: 18,
+            paint: {
+              "heatmap-weight": ["get", "strength"],
+              "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 12, 22, 15, 50, 17, 90],
+              "heatmap-intensity": 0.6,
+              "heatmap-opacity": 0.38,
+              "heatmap-color": [
+                "interpolate",
+                ["linear"],
+                ["heatmap-density"],
+                0, "rgba(255,255,255,0)",
+                0.2, "rgba(249,213,228,0.35)",
+                0.45, "rgba(242,185,200,0.55)",
+                0.7, "rgba(217,190,240,0.65)",
+                1, "rgba(246,194,155,0.75)",
+              ],
+            },
+          },
+          beforeLabels,
+        );
+        map.addLayer(
+          {
+            id: "es-taste-halo",
+            type: "circle",
+            source: "es-taste-pts",
+            paint: {
+              "circle-color": ["get", "color"],
+              "circle-radius": ["interpolate", ["linear"], ["zoom"], 13, ["*", 14, ["get", "scale"]], 17, ["*", 38, ["get", "scale"]]],
+              "circle-blur": 0.85,
+              "circle-opacity": ["case", ["==", ["get", "tier"], "strong"], 0.75, 0.5],
+            },
+          },
+          beforeLabels,
+        );
+        map.addLayer(
+          {
+            id: "es-taste-fp-fill",
+            type: "fill",
+            source: "es-taste-fp",
+            minzoom: 14,
+            paint: {
+              "fill-color": ["get", "color"],
+              "fill-opacity": ["case", ["boolean", ["get", "active"], false], 0.85, ["==", ["get", "tier"], "strong"], 0.62, 0.42],
+            },
+          },
+          beforeLabels,
+        );
+        map.addLayer(
+          {
+            id: "es-taste-fp-line",
+            type: "line",
+            source: "es-taste-fp",
+            minzoom: 14,
+            paint: { "line-color": ["get", "deep"], "line-width": ["case", ["boolean", ["get", "active"], false], 2.2, 1.2], "line-opacity": 0.7 },
+          },
+          beforeLabels,
+        );
+        map.on("click", "es-taste-fp-fill", (e) => {
+          const id = e.features?.[0]?.properties?.id;
+          if (id) useElsewhere.getState().select(String(id), { focus: false });
+        });
+        map.on("mousemove", "es-taste-fp-fill", (e) => {
+          const id = e.features?.[0]?.properties?.id;
+          map!.getCanvas().style.cursor = "pointer";
+          if (id && useElsewhere.getState().hoveredPlaceId !== id) useElsewhere.getState().hover(String(id));
+        });
+        map.on("mouseleave", "es-taste-fp-fill", () => {
+          map!.getCanvas().style.cursor = "";
+          useElsewhere.getState().hover(null);
+        });
+
+        // Immersive: the 3D taste buildings sit on real footprints, so the basemap's own extrusion at the
+        // pointer tells us which highlighted place (if any) is under it.
+        const pickBuilding = (point: maplibregl.Point) => {
+          const s = useElsewhere.getState();
+          if (s.mapMode !== "immersive" || !s.tasteLayer || !highlightRef.current.length || !map?.getLayer("building-3d")) return null;
+          const hit = map.queryRenderedFeatures(point, { layers: ["building-3d"] })[0];
+          if (!hit) return null;
+          return highlightRef.current.find((h) => footprints.current.get(h.placeId) && inPolygon(h.lon, h.lat, hit.geometry)) ?? null;
+        };
+        map.on("click", (e) => {
+          if (e.defaultPrevented) return;
+          const h = pickBuilding(e.point);
+          if (h) useElsewhere.getState().select(h.placeId, { focus: true });
+        });
+        let hoverFrame = 0;
+        map.on("mousemove", (e) => {
+          if (hoverFrame || useElsewhere.getState().mapMode !== "immersive") return;
+          hoverFrame = requestAnimationFrame(() => {
+            hoverFrame = 0;
+            const h = pickBuilding(e.point);
+            const s = useElsewhere.getState();
+            if (h) {
+              map!.getCanvas().style.cursor = "pointer";
+              if (s.hoveredPlaceId !== h.placeId) s.hover(h.placeId);
+            } else if (s.hoveredPlaceId && highlightRef.current.some((x) => x.placeId === s.hoveredPlaceId) && map!.getCanvas().style.cursor === "pointer") {
+              map!.getCanvas().style.cursor = "";
+              s.hover(null);
+            }
+          });
+        });
+        // Footprints come from loaded tiles; retry the ones not found once the view settles.
+        map.on("idle", () => {
+          const hs = highlightRef.current;
+          if (!map || !hs.length || map.getZoom() < 14) return;
+          const missing = hs.filter((h) => !footprints.current.get(h.placeId));
+          if (!missing.length) return;
+          let changed = false;
+          for (const [id, fp] of findFootprints(map, missing)) {
+            if (fp && !footprints.current.get(id)) changed = true;
+            footprints.current.set(id, fp);
+          }
+          if (changed) setFootprintVersion((v) => v + 1);
+        });
+
         map.addSource("es-trail", { type: "geojson", data: emptyFC });
         map.addLayer({
           id: "es-trail-line",
@@ -191,6 +363,7 @@ export function MapCanvas() {
     })();
 
     const markerMap = markers.current;
+    const footprintCache = footprints.current;
     return () => {
       cancelled = true;
       for (const m of markerMap.values()) {
@@ -202,6 +375,7 @@ export function MapCanvas() {
       userMarker.current?.remove();
       userMarker.current = null;
       immersive.current = null;
+      footprintCache.clear();
       map?.remove();
       mapRef.current = null;
       setReady(false);
@@ -260,7 +434,8 @@ export function MapCanvas() {
         el.className = "es-marker";
         el.addEventListener("click", (e) => {
           e.stopPropagation();
-          useElsewhere.getState().select(r.place.id, { focus: false });
+          // Immersive glides the camera to the place; Explore stays put and just opens the card.
+          useElsewhere.getState().select(r.place.id, { focus: useElsewhere.getState().mapMode === "immersive" });
         });
         el.addEventListener("mouseenter", () => useElsewhere.getState().hover(r.place.id));
         el.addEventListener("mouseleave", () => useElsewhere.getState().hover(null));
@@ -278,13 +453,22 @@ export function MapCanvas() {
       }
       const Icon = meta.icon;
       const selected = selectedPlaceId === r.place.id;
-      const key = `${i}|${selected}|${immersiveOn}`;
+      const h = highlightById.get(r.place.id);
+      const key = `${i}|${selected}|${immersiveOn}|${h?.tier ?? ""}|${h?.why ?? ""}`;
       entry.el.dataset.selected = String(selected);
       entry.el.dataset.shape = immersiveOn ? "round" : meta.shape;
       entry.el.dataset.mode = immersiveOn ? "immersive" : "explore";
       entry.el.dataset.dimmed = String(!!selectedPlaceId && !selected && hoveredPlaceId !== r.place.id);
       entry.el.style.setProperty("--pin-bg", meta.color);
-      entry.el.setAttribute("aria-label", `${i + 1}. ${r.place.name}, ${CATEGORY_LABEL[r.place.category]}, ${r.walkMin} minute walk`);
+      entry.el.dataset.taste = h ? h.tier : tasteLayer && highlights.length ? "muted" : "off";
+      if (h) {
+        entry.el.style.setProperty("--taste", h.color);
+        entry.el.style.setProperty("--taste-deep", h.deep);
+      }
+      entry.el.setAttribute(
+        "aria-label",
+        `${i + 1}. ${r.place.name}, ${CATEGORY_LABEL[r.place.category]}, ${r.walkMin} minute walk${h ? `. Taste highlight: ${h.why}` : ""}`,
+      );
       entry.el.setAttribute("aria-pressed", String(selected));
       entry.marker.getElement().style.zIndex = selected ? "10" : String(MARKER_LIMIT - i);
       if (entry.key !== key) {
@@ -299,6 +483,11 @@ export function MapCanvas() {
             </span>
             <span className="label" aria-hidden>
               {r.place.name}
+              {h && (
+                <span className="why">
+                  <Sparkles size={10} /> {h.why}
+                </span>
+              )}
             </span>
           </>,
         );
@@ -315,8 +504,64 @@ export function MapCanvas() {
       })),
     });
 
-    immersive.current?.setPoints(immersivePoints());
-  }, [ready, result, hiddenCategories, selectedPlaceId, hoveredPlaceId, lensMode, sortMode, tasteSignals.length, mapMode]);
+    immersive.current?.setPoints(immersivePoints(highlightById, footprints.current));
+  }, [ready, result, hiddenCategories, selectedPlaceId, hoveredPlaceId, lensMode, sortMode, tasteSignals.length, mapMode, highlightById, tasteLayer, highlights.length, footprintVersion]);
+
+  // --- Taste Layer ----------------------------------------------------------
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map) return;
+    const immersiveOn = mapMode === "immersive";
+    const missing = highlights.filter((h) => !footprints.current.get(h.placeId));
+    if (missing.length && map.getZoom() >= 14) for (const [id, fp] of findFootprints(map, missing)) footprints.current.set(id, fp);
+
+    const active = (id: string) => id === selectedPlaceId || id === hoveredPlaceId;
+    (map.getSource("es-taste-pts") as maplibregl.GeoJSONSource | undefined)?.setData({
+      type: "FeatureCollection",
+      features: highlights.map((h) => ({
+        type: "Feature",
+        properties: { id: h.placeId, color: h.color, tier: h.tier, strength: h.strength, scale: active(h.placeId) ? 1.4 : h.tier === "strong" ? 1 : 0.75 },
+        geometry: { type: "Point", coordinates: [h.lon, h.lat] },
+      })),
+    });
+    (map.getSource("es-taste-fp") as maplibregl.GeoJSONSource | undefined)?.setData({
+      type: "FeatureCollection",
+      features: highlights.flatMap((h) => {
+        const fp = footprints.current.get(h.placeId);
+        return fp
+          ? [{ type: "Feature" as const, properties: { id: h.placeId, color: h.color, deep: h.deep, tier: h.tier, active: active(h.placeId) }, geometry: { type: "Polygon" as const, coordinates: [fp.ring] } }]
+          : [];
+      }),
+    });
+    // A cluster wash only means something when several places match.
+    if (map.getLayer("es-taste-heat")) map.setLayoutProperty("es-taste-heat", "visibility", highlights.length >= 3 ? "visible" : "none");
+    // In Immersive the 3D buildings replace the flat tint.
+    for (const id of ["es-taste-fp-fill", "es-taste-fp-line"]) if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", immersiveOn ? "none" : "visible");
+    if (map.getLayer("building-3d")) map.setPaintProperty("building-3d", "fill-extrusion-color", highlights.length ? BUILDING_3D_COLOR_MUTED : BUILDING_3D_COLOR);
+    if (immersiveOn) map.setSky(highlights.length ? TASTE_SKY : IMMERSIVE_SKY);
+
+    immersive.current?.setTasteBuildings(
+      highlights.slice(0, TASTE_BUILDING_LIMIT).map(
+        (h): TasteBuilding => {
+          const fp = footprints.current.get(h.placeId);
+          return {
+            id: h.placeId,
+            lat: h.lat,
+            lon: h.lon,
+            ring: fp?.ring ?? null,
+            heightM: fp?.heightM ?? 12,
+            color: h.color,
+            deep: h.deep,
+            tier: h.tier,
+            category: h.category,
+            selected: h.placeId === selectedPlaceId,
+            hovered: h.placeId === hoveredPlaceId,
+          };
+        },
+      ),
+    );
+    immersive.current?.setPoints(immersivePoints(highlightById, footprints.current));
+  }, [ready, highlights, highlightById, mapMode, selectedPlaceId, hoveredPlaceId, footprintVersion, immersiveVersion]);
 
   // --- Saved pins (for saved places not already shown) -----------------------
   useEffect(() => {
@@ -404,7 +649,8 @@ export function MapCanvas() {
     const immersiveOn = useElsewhere.getState().mapMode === "immersive";
     map.flyTo({
       center: [place.lon, place.lat],
-      zoom: Math.max(map.getZoom(), 16.6),
+      // Immersive comes in close enough for the building itself to read.
+      zoom: Math.max(map.getZoom(), immersiveOn ? 17.3 : 16.6),
       pitch: immersiveOn ? 62 : map.getPitch(),
       bearing: immersiveOn ? map.getBearing() - 12 : map.getBearing(),
       padding: panelPadding(),
@@ -425,8 +671,9 @@ export function MapCanvas() {
     map.setLayoutProperty("building-3d", "visibility", on ? "visible" : "none");
     map.setPaintProperty("building", "fill-opacity", on ? 0 : 1);
     map.setPaintProperty("background", "background-color", on ? "#F9ECE6" : "#FBF1EA");
+    let settle: (() => void) | null = null;
     if (on) {
-      map.setSky(IMMERSIVE_SKY);
+      map.setSky(useElsewhere.getState().tasteLayer && highlightRef.current.length ? TASTE_SKY : IMMERSIVE_SKY);
       map.setLight({ anchor: "map", color: "#FFF0E4", intensity: 0.22, position: [1.35, 210, 38] });
       if (!map.getLayer("es-immersive")) {
         try {
@@ -437,17 +684,29 @@ export function MapCanvas() {
           };
           map.addLayer(layer);
           immersive.current = layer;
-          layer.setPoints(immersivePoints());
+          layer.setPoints(immersivePoints(new Map(highlightRef.current.map((h) => [h.placeId, h])), footprints.current));
+          // Hand the new layer its taste buildings (that effect ran before this layer existed).
+          requestAnimationFrame(() => setImmersiveVersion((v) => v + 1));
         } catch (e) {
           console.warn("[immersive] falling back to extrusions only", e);
         }
       }
       map.easeTo({ pitch: 58, bearing: map.getBearing() || -18, zoom: Math.max(map.getZoom(), 15.4), duration: reduce ? 0 : 1100 });
+      // Lock the zoom floor once the camera has arrived, so the transition itself isn't clipped.
+      settle = () => {
+        if (useElsewhere.getState().mapMode === "immersive") map.setMinZoom(IMMERSIVE_MIN_ZOOM);
+      };
+      if (reduce) settle();
+      else map.once("moveend", settle);
     } else {
       if (map.getLayer("es-immersive")) map.removeLayer("es-immersive");
       immersive.current = null;
+      map.setMinZoom(3);
       map.easeTo({ pitch: 0, bearing: 0, duration: reduce ? 0 : 900 });
     }
+    return () => {
+      if (settle) map.off("moveend", settle);
+    };
   }, [ready, mapMode]);
 
   if (failure) {
@@ -472,7 +731,7 @@ export function MapCanvas() {
           <p className="shimmer-text font-serif text-2xl italic">Drawing the neighbourhood…</p>
         </div>
       )}
-      <div className="pointer-events-none absolute inset-x-0 top-20 z-10 flex justify-center gap-2 lg:top-5">
+      <div className="pointer-events-none absolute inset-x-0 top-20 z-10 flex justify-center gap-2 lg:top-[84px]">
         {backTo && (
           <button
             onClick={() => {

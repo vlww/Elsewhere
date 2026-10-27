@@ -32,6 +32,8 @@ function sessionBlock(session: AgentSession, result: SearchResult | null) {
       taste_mode: tasteMode(),
       places_data: placesProviderSummary()[0],
       lens,
+      map_mode: session.mapMode,
+      taste_layer: session.tasteLayer,
       selected_place_id: session.selectedPlaceId,
       saved_count: session.savedPlaceIds.length,
       recent_feedback: session.feedback.slice(-6).map((f) => `${f.placeName}: ${f.reason}`),

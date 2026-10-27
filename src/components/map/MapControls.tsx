@@ -1,30 +1,42 @@
 "use client";
 
-import { Box, Compass, LocateFixed, Map as MapIcon, Minus, Plus } from "lucide-react";
+import { LocateFixed, Minus, Plus } from "lucide-react";
 import { useElsewhere } from "@/store/useElsewhere";
-import { IconButton, Segmented } from "@/components/ui/primitives";
+import { IconButton } from "@/components/ui/primitives";
 import { mapRef, prefersReducedMotion } from "./mapRef";
+
+/**
+ * A north needle that turns with the map's bearing and leans back with its pitch. MapCanvas writes
+ * --map-bearing / --map-pitch on the root element, so this follows the camera without re-rendering.
+ */
+function CompassNeedle() {
+  return (
+    <span
+      aria-hidden
+      className="block h-[22px] w-[22px] [perspective:60px]"
+      style={{ transform: "rotate(calc(var(--map-bearing, 0) * -1deg))" }}
+    >
+      <svg
+        viewBox="0 0 24 24"
+        className="h-full w-full"
+        style={{ transform: "rotateX(calc(var(--map-pitch, 0) * 0.6deg))" }}
+      >
+        <circle cx="12" cy="12" r="10.5" fill="none" stroke="currentColor" strokeOpacity="0.18" strokeWidth="1.2" />
+        <path d="M12 3.2 15 12h-6z" fill="#B8668A" />
+        <path d="M12 20.8 9 12h6z" fill="currentColor" fillOpacity="0.35" />
+        <circle cx="12" cy="12" r="1.3" fill="#FFF9F4" stroke="currentColor" strokeOpacity="0.4" strokeWidth="0.6" />
+      </svg>
+    </span>
+  );
+}
 
 export function MapControls() {
   const mapMode = useElsewhere((s) => s.mapMode);
-  const setMapMode = useElsewhere((s) => s.setMapMode);
   const location = useElsewhere((s) => s.location);
   const d = () => (prefersReducedMotion() ? 0 : 500);
 
   return (
     <div className="pointer-events-auto flex flex-col items-end gap-2">
-      <div className="surface rounded-full p-1">
-        <Segmented
-          label="Map mode"
-          size="sm"
-          value={mapMode}
-          onChange={setMapMode}
-          options={[
-            { value: "explore", label: <><MapIcon size={13} /> Explore</> },
-            { value: "immersive", label: <><Box size={13} /> Immersive</>, hint: "3D city view with depth and light" },
-          ]}
-        />
-      </div>
       <div className="surface flex flex-col rounded-full p-1">
         <IconButton label="Zoom in" onClick={() => mapRef.current?.zoomIn({ duration: d() })}>
           <Plus size={16} />
@@ -33,10 +45,10 @@ export function MapControls() {
           <Minus size={16} />
         </IconButton>
         <IconButton
-          label="Reset view angle"
+          label="Face north"
           onClick={() => mapRef.current?.easeTo({ bearing: 0, pitch: mapMode === "immersive" ? 58 : 0, duration: d() })}
         >
-          <Compass size={16} />
+          <CompassNeedle />
         </IconButton>
         <IconButton
           label="Back to search area"

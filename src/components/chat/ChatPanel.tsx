@@ -12,6 +12,7 @@ const STARTERS = [
   "Find me somewhere that feels like a Sofia Coppola movie.",
   "I have an hour before class. Somewhere peaceful, preferably outdoors.",
   "Surprise me — somewhere I wouldn't normally go.",
+  "Make the map more colorful around places I'd probably love.",
 ];
 
 const NOTE_ICON: Record<ChatNote["kind"], typeof MapIcon> = {
@@ -24,6 +25,7 @@ const NOTE_ICON: Record<ChatNote["kind"], typeof MapIcon> = {
   location: MapPin,
   lens: SlidersHorizontal,
   feedback: Check,
+  layer: Sparkles,
 };
 
 function Notes({ notes }: { notes: ChatNote[] }) {

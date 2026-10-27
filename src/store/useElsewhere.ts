@@ -31,7 +31,7 @@ export interface AppStatus {
 }
 
 export interface ChatNote {
-  kind: "results" | "taste" | "saved" | "focus" | "compare" | "trail" | "location" | "lens" | "feedback";
+  kind: "results" | "taste" | "saved" | "focus" | "compare" | "trail" | "location" | "lens" | "feedback" | "layer";
   text: string;
   entityId?: string;
 }
@@ -78,6 +78,8 @@ interface State {
   compareOpen: boolean;
   trail: TasteTrail | null;
   mapMode: MapMode;
+  /** Taste Layer: a presentation over the same results, drawn by whichever map mode is active. */
+  tasteLayer: boolean;
   focusRequest: { placeId: string; nonce: number } | null;
   fitRequest: number;
   panel: Panel;
@@ -110,6 +112,7 @@ interface Actions {
   setCompareOpen(v: boolean): void;
   clearTrail(): void;
   setMapMode(m: MapMode): void;
+  setTasteLayer(on: boolean): void;
   setPanel(p: Panel): void;
   setMobileTab(t: MobileTab): void;
   setDraft(t: string): void;
@@ -189,6 +192,9 @@ export const useElsewhere = create<State & Actions>()(
           case "set_lens":
             set({ lensMode: a.mode });
             return { kind: "lens", text: `${LENS_LABEL[a.mode]} ranking` };
+          case "taste_layer":
+            get().setTasteLayer(a.on);
+            return { kind: "layer", text: a.on ? "Taste Layer on" : "Taste Layer off" };
           case "compare":
             set({ compareIds: a.placeIds, compareOpen: true });
             return { kind: "compare", text: `Comparing ${a.placeIds.length} places` };
@@ -238,6 +244,7 @@ export const useElsewhere = create<State & Actions>()(
         compareOpen: false,
         trail: null,
         mapMode: "explore",
+        tasteLayer: false,
         focusRequest: null,
         fitRequest: 0,
         panel: "results",
@@ -403,6 +410,10 @@ export const useElsewhere = create<State & Actions>()(
         setCompareOpen: (v) => set({ compareOpen: v }),
         clearTrail: () => set({ trail: null }),
         setMapMode: (m) => set({ mapMode: m }),
+        setTasteLayer(on) {
+          // Turning the layer on also ranks by taste, so the numbered markers lead with what's highlighted.
+          set({ tasteLayer: on, ...(on && get().tasteSignals.length ? { lensMode: "taste" as const } : {}) });
+        },
         setPanel: (p) => set({ panel: p }),
         setMobileTab: (t) => set({ mobileTab: t }),
         setDraft: (t) => set({ draft: t }),
@@ -418,6 +429,8 @@ export const useElsewhere = create<State & Actions>()(
             constraints: s.constraints,
             tasteSignals: s.tasteSignals,
             lensMode: s.lensMode,
+            mapMode: s.mapMode,
+            tasteLayer: s.tasteLayer,
             selectedPlaceId: s.selectedPlaceId,
             visibleResultIds: s.orderedRecommendations().slice(0, 40).map((r) => r.place.id),
             savedPlaceIds: Object.keys(s.saved).slice(0, 200),
@@ -523,6 +536,7 @@ export const useElsewhere = create<State & Actions>()(
       partialize: (s) => ({
         saved: s.saved,
         mapMode: s.mapMode,
+        tasteLayer: s.tasteLayer,
         tasteSignals: s.tasteSignals.filter((e) => e.origin !== "conversation"),
         location: s.location?.source === "device" ? null : s.location,
       }),

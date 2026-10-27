@@ -59,6 +59,28 @@ const FILL: Record<string, string> = {
   building: C.building,
 };
 
+/** Immersive city: warm ivory low-rise fading to lavender towers. */
+export const BUILDING_3D_COLOR = [
+  "interpolate",
+  ["linear"],
+  ["coalesce", ["get", "render_height"], 8],
+  0, "#FFFBF6",
+  18, "#FFF3EB",
+  45, "#FBEBEC",
+  90, "#F2EBF8",
+  200, "#E9E3FA",
+] as const as unknown as string;
+
+/** With the Taste Layer on, the rest of the city recedes to a soft porcelain so highlighted buildings carry the colour. */
+export const BUILDING_3D_COLOR_MUTED = [
+  "interpolate",
+  ["linear"],
+  ["coalesce", ["get", "render_height"], 8],
+  0, "#FAF5F2",
+  40, "#F3EEF0",
+  200, "#ECE8F2",
+] as const as unknown as string;
+
 export function buildElsewhereStyle(base: StyleSpecification): StyleSpecification {
   const style: StyleSpecification = structuredClone(base);
   delete (style.sources as Record<string, unknown>).ne2_shaded;
@@ -95,16 +117,7 @@ export function buildElsewhereStyle(base: StyleSpecification): StyleSpecificatio
       }
       case "fill-extrusion":
         if (l.id === "building-3d") {
-          l.paint["fill-extrusion-color"] = [
-            "interpolate",
-            ["linear"],
-            ["coalesce", ["get", "render_height"], 8],
-            0, "#FFFBF6",
-            18, "#FFF3EB",
-            45, "#FBEBEC",
-            90, "#F2EBF8",
-            200, "#E9E3FA",
-          ];
+          l.paint["fill-extrusion-color"] = BUILDING_3D_COLOR;
           l.paint["fill-extrusion-opacity"] = 0.95;
           l.paint["fill-extrusion-vertical-gradient"] = true;
           l.layout.visibility = "none";
@@ -136,4 +149,12 @@ export const IMMERSIVE_SKY = {
   "horizon-fog-blend": 0.6,
   "fog-ground-blend": 0.35,
   "atmosphere-blend": 0,
+};
+
+/** Taste Layer dusk: a touch deeper and rosier, so lit windows and halos read. */
+export const TASTE_SKY = {
+  ...IMMERSIVE_SKY,
+  "sky-color": "#E3AECB",
+  "horizon-color": "#FBD3C4",
+  "fog-color": "#F4D6DE",
 };

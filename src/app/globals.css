@@ -162,6 +162,34 @@ html, body {
 .es-marker[data-mode="immersive"] .rank { top: -8px; right: -10px; }
 .es-marker[data-mode="immersive"][data-selected="true"] .pin { width: 30px; height: 30px; }
 .es-marker[data-dimmed="true"] { opacity: 0.45; }
+
+/* Taste Layer: highlighted places glow in their interest colour; the rest recede (never hidden). */
+.es-marker .label .why { display: flex; align-items: center; gap: 4px; margin-top: 4px; font: 500 10.5px/1.1 var(--font-sans); color: var(--taste-deep, var(--color-rose-deep)); }
+.es-marker[data-taste="strong"] .pin,
+.es-marker[data-taste="notable"] .pin { background: var(--taste); transition: box-shadow 400ms var(--ease-out-soft), background 400ms; }
+.es-marker[data-taste="strong"] .pin {
+  box-shadow: 0 0 0 2.5px #fff, 0 0 0 5px var(--taste-deep), 0 0 22px 6px color-mix(in srgb, var(--taste) 70%, transparent), 0 10px 20px -8px rgb(89 52 82 / 0.5);
+}
+.es-marker[data-taste="notable"] .pin {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 3.5px color-mix(in srgb, var(--taste-deep) 55%, transparent), 0 0 14px 2px color-mix(in srgb, var(--taste) 45%, transparent), 0 8px 16px -8px rgb(89 52 82 / 0.45);
+}
+.es-marker[data-taste="strong"] .rank { background: var(--taste-deep); }
+.es-marker[data-taste="strong"] .label { opacity: 1; transform: translateX(-50%); }
+.es-marker[data-taste="strong"]:not(:hover):not(:focus-visible):not([data-selected="true"]) .label .why { display: none; }
+.es-marker[data-taste="muted"] { opacity: 0.55; }
+.es-marker[data-taste="muted"] .pin { filter: saturate(0.35); }
+.es-marker[data-taste="muted"]:hover, .es-marker[data-taste="muted"]:focus-visible { opacity: 1; }
+.es-marker[data-taste="muted"]:hover .pin { filter: none; }
+/* Immersive + Taste: the lit 3D building and its gem are the marker; the pin shrinks to a ground dot. */
+.es-marker[data-mode="immersive"]:is([data-taste="strong"], [data-taste="notable"]) .pin,
+.es-marker[data-mode="immersive"][data-selected="true"]:is([data-taste="strong"], [data-taste="notable"]) .pin { width: 14px; height: 14px; border-width: 2px; }
+.es-marker[data-mode="immersive"]:is([data-taste="strong"], [data-taste="notable"]) .pin svg { display: none; }
+.es-marker[data-mode="immersive"]:is([data-taste="strong"], [data-taste="notable"]) .rank { top: -12px; right: -14px; }
+.es-marker[data-mode="immersive"][data-taste="strong"] .label { top: calc(100% + 4px); }
+.es-marker[data-selected="true"]:is([data-taste="strong"], [data-taste="notable"]) .pin {
+  box-shadow: 0 0 0 4px rgb(255 255 255 / 0.75), 0 0 0 9px color-mix(in srgb, var(--taste) 60%, transparent), 0 0 30px 10px color-mix(in srgb, var(--taste) 55%, transparent);
+}
+.es-marker[data-mode="immersive"]:is([data-taste="strong"], [data-taste="notable"]) .pin { box-shadow: 0 0 0 2px #fff, 0 2px 6px rgb(48 38 56 / 0.35); }
 .es-marker.is-new .pin { animation: marker-in 620ms var(--ease-out-soft) both; animation-delay: var(--delay, 0ms); }
 .es-marker[data-shape="round"].is-new .pin { animation-name: marker-in-round; }
 @keyframes marker-in { from { opacity: 0; transform: rotate(-45deg) translateY(-14px) scale(0.6); } to { opacity: 1; transform: rotate(-45deg); } }
