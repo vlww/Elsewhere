@@ -77,3 +77,9 @@ Qloo's affinity is shown raw and never as a percentage. The total is labelled as
 - **Cost:** the guide is pay-per-use. Set `ELSEWHERE_MODEL=claude-haiku-5-5` (and optionally `ELSEWHERE_EFFORT=low`) for a cheap demo; everything except the chat works with no Anthropic key at all.
 - **Qloo matching:** insights are filtered to the search's categories via `urn:tag:category:place:*` tags; a place's category comes only from those tags (other tag types include nearby landmarks). Matched inventory places borrow missing hours, price, rating or photo from Qloo, labelled as such.
 - **Accessibility:** markers are real buttons with labels; marker kinds differ by icon and shape, not just colour; panels support keyboard and Escape; `prefers-reduced-motion` disables camera flights and 3D animation.
+
+## License
+
+Elsewhere's source code is released under the [MIT License](LICENSE).
+
+Third-party data keeps its own terms: the bundled demo snapshot (`src/data/demo-area.json`) and map data are © OpenStreetMap contributors under the [ODbL](https://opendatacommons.org/licenses/odbl/); Qloo, Google Places and OSRM/FOSSGIS results are subject to their providers' terms.
