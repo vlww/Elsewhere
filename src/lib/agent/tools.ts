@@ -6,6 +6,7 @@ import { entityTypeLabel, QlooError, resolveEntities, tasteMode } from "@/lib/ql
 import { CATEGORY_LABEL } from "@/lib/recommendations/activities";
 import { runSearch } from "@/lib/recommendations/pipeline";
 import { buildTrail } from "@/lib/recommendations/trail";
+import { tasteHighlights } from "@/lib/taste/highlights";
 import {
   ACTIVITIES,
   PLACE_CATEGORIES,
@@ -42,6 +43,7 @@ const inputs = {
   add_taste_signal: z.object({ entity_id: z.string().min(1).max(120) }),
   remove_taste_signal: z.object({ entity_id: z.string().min(1).max(120) }),
   set_lens: z.object({ mode: z.enum(["practical", "taste"]) }),
+  set_taste_layer: z.object({ on: z.boolean() }),
   focus_place: z.object({ place_id: z.string() }),
   get_place_details: z.object({ place_id: z.string() }),
   save_place: z.object({ place_id: z.string() }),
@@ -65,6 +67,8 @@ const DESCRIPTIONS: Record<ToolName, string> = {
     "Add a cultural entity (id from find_cultural_entities) to the user's active interests for this session. Use only for an obvious single match or one the user picked.",
   remove_taste_signal: "Remove an interest from the active taste signals.",
   set_lens: "Switch the Taste Lens between practical ranking and taste-aware ranking.",
+  set_taste_layer:
+    "Turn the map's Taste Layer on or off. When on, places with cultural evidence for the user's interests are highlighted on the map (halos and tinted buildings in Explore, colourful lit buildings in Immersive) and ranking switches to taste-aware. Returns exactly which places are highlighted and why. Use for requests like 'make the map more colourful around places I'd love' or 'why are these highlighted?'.",
   focus_place: "Fly the map camera to a place from the current results and select it.",
   get_place_details: "Get the full evidence for one place in the current results: hours, listed amenities, score breakdown, cultural evidence, trade-offs.",
   save_place: "Save a place from the current results to the user's Saved list.",
@@ -132,6 +136,26 @@ function compactRec(r: Recommendation, lens: "practical" | "taste") {
       : null,
     tradeoffs: r.tradeoffs,
     score: Number((lens === "taste" ? r.tasteScore.total : r.practicalScore.total).toFixed(3)),
+  };
+}
+
+/** What the Taste Layer is drawing, from the same function the map uses. */
+function highlightSummary(result: SearchResult, signals: CulturalEntity[]) {
+  const hs = tasteHighlights(result.recommendations, signals);
+  return {
+    taste_status: result.taste.status,
+    taste_message: result.taste.message,
+    highlighted: hs.slice(0, 12).map((h) => ({
+      id: h.placeId,
+      name: h.name,
+      category: CATEGORY_LABEL[h.category],
+      tier: h.tier,
+      top_contributor: h.entityName ?? "not broken down by Qloo",
+      provenance: h.provenance,
+      match: h.match,
+    })),
+    basis:
+      "Highlighted = the strongest places carrying cultural evidence (Qloo Insights affinity in live mode, simulated in demo), at most 14. 'strong' = roughly the top quarter by affinity among these results. Colours only key which interest contributed most.",
   };
 }
 
@@ -258,6 +282,17 @@ export async function executeTool(name: string, rawInput: unknown, ctx: ToolCont
       ctx.emit({ type: "set_lens", mode: s.lensMode });
       if (!ctx.result) return { lens: s.lensMode, note: "No results yet." };
       return { lens: s.lensMode, top: lensOrder(ctx.result, s.lensMode).slice(0, 5).map((r) => compactRec(r, s.lensMode)) };
+    }
+
+    case "set_taste_layer": {
+      const on = input.on as boolean;
+      s.tasteLayer = on;
+      if (on && s.tasteSignals.length) s.lensMode = "taste";
+      ctx.emit({ type: "taste_layer", on });
+      if (!on) return { taste_layer: false };
+      if (!s.tasteSignals.length) return { taste_layer: true, highlighted: [], note: "No interests are active, so nothing is highlighted. Ask what they love." };
+      if (!ctx.result) return { taste_layer: true, highlighted: [], note: "No results yet; search first." };
+      return { taste_layer: true, ...highlightSummary(ctx.result, s.tasteSignals) };
     }
 
     case "focus_place": {

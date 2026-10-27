@@ -267,6 +267,9 @@ export const AgentSessionSchema = z.object({
   constraints: SearchConstraintsSchema,
   tasteSignals: z.array(CulturalEntitySchema).max(12),
   lensMode: z.enum(["practical", "taste"]),
+  /** Map presentation only: which renderer is showing, and whether the Taste Layer is drawn. */
+  mapMode: z.enum(["explore", "immersive"]).default("explore"),
+  tasteLayer: z.boolean().default(false),
   selectedPlaceId: z.string().nullable(),
   visibleResultIds: z.array(z.string()).max(40),
   savedPlaceIds: z.array(z.string()).max(200),
@@ -296,6 +299,7 @@ export type ClientAction =
   | { type: "add_taste"; entity: CulturalEntity }
   | { type: "remove_taste"; entityId: string }
   | { type: "set_lens"; mode: "practical" | "taste" }
+  | { type: "taste_layer"; on: boolean }
   | { type: "compare"; placeIds: string[] }
   | { type: "trail"; trail: TasteTrail }
   | { type: "entity_choices"; query: string; entities: CulturalEntity[] }

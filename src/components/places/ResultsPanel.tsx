@@ -165,7 +165,7 @@ export function ResultsPanel() {
             </h2>
             {result && !searching && (
               <p className="mt-1.5 text-[12px] text-ink-faint">
-                {visible.length} of {result.inventory.count} nearby · within {constraints.radiusM >= 1000 ? `${(constraints.radiusM / 1000).toFixed(1)} km` : `${constraints.radiusM} m`} · {result.inventory.provider}
+                {visible.length} of {result.inventory.count} nearby · within {constraints.radiusM >= 1000 ? `${(constraints.radiusM / 1000).toFixed(1)} km` : `${constraints.radiusM} m`}
               </p>
             )}
           </div>

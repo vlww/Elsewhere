@@ -8,6 +8,7 @@ import { cx } from "@/components/ui/primitives";
 import { TopBar } from "./TopBar";
 import { LocationGate } from "./LocationGate";
 import { MapControls } from "./map/MapControls";
+import { MapModeDock } from "./map/MapModeDock";
 import { ChatPanel, Composer } from "./chat/ChatPanel";
 import { ResultsPanel } from "./places/ResultsPanel";
 import { PlaceDetail } from "./places/PlaceDetail";
@@ -61,7 +62,12 @@ function DesktopLayout() {
       <div className="pointer-events-none absolute bottom-6 right-[calc(var(--side-w)+32px)] z-20">
         <MapControls />
       </div>
-      <div className="pointer-events-none absolute inset-x-0 bottom-6 z-30 flex justify-center pl-[calc(var(--chat-w)+16px)] pr-[calc(var(--side-w)+32px)]">
+      {location && (
+        <div className="pointer-events-none absolute bottom-4 left-[calc(var(--chat-w)+28px)] z-20">
+          <MapModeDock />
+        </div>
+      )}
+      <div className="pointer-events-none absolute inset-x-0 bottom-6 z-30 flex justify-center pl-[calc(var(--chat-w)+250px)] pr-[calc(var(--side-w)+80px)]">
         <CompareTray />
       </div>
       {!location && (
@@ -101,9 +107,14 @@ function MobileLayout() {
         </div>
       )}
       {location && !sheetOpen && (
-        <div className="pointer-events-none absolute right-3 top-20 z-20">
-          <MapControls />
-        </div>
+        <>
+          <div className="pointer-events-none absolute left-3 top-20 z-20">
+            <MapModeDock compact />
+          </div>
+          <div className="pointer-events-none absolute right-3 top-20 z-20">
+            <MapControls />
+          </div>
+        </>
       )}
 
       {location && (
@@ -166,6 +177,8 @@ export function ElsewhereApp() {
     void (async () => {
       await useElsewhere.persist.rehydrate();
       const s = useElsewhere.getState();
+      // A Taste Layer left on last visit ranks by taste again, so markers lead with what it highlights.
+      if (s.tasteLayer && s.tasteSignals.length) s.setLens("taste");
       await s.loadStatus();
       if (s.location) void s.runSearch();
     })();

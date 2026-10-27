@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import * as maplibregl from "maplibre-gl";
 import type { CustomLayerInterface, CustomRenderMethodInput } from "maplibre-gl";
+import type { PlaceCategory } from "@/types";
 
 export interface ImmersivePoint {
   id: string;
@@ -9,6 +10,26 @@ export interface ImmersivePoint {
   color: string;
   selected: boolean;
   isNew: boolean;
+  /** Height of the building the gem floats over (0 = ground). */
+  liftM: number;
+  /** Taste Layer on and this place isn't highlighted: recede. */
+  muted: boolean;
+}
+
+/** A Taste Layer highlight drawn as an art-directed building. */
+export interface TasteBuilding {
+  id: string;
+  lat: number;
+  lon: number;
+  /** Real OSM outline; null draws a clearly illustrative pavilion at the coordinates instead. */
+  ring: [number, number][] | null;
+  heightM: number;
+  color: string;
+  deep: string;
+  tier: "strong" | "notable";
+  category: PlaceCategory;
+  selected: boolean;
+  hovered: boolean;
 }
 
 interface Item {
@@ -21,12 +42,27 @@ interface Item {
   data: ImmersivePoint;
 }
 
-function radialTexture(inner: string, outer: string) {
+interface BuildingItem {
+  group: THREE.Group;
+  walls: THREE.MeshStandardMaterial;
+  halo: THREE.Mesh;
+  haloR: number;
+  lights?: THREE.MeshStandardMaterial;
+  center: [number, number];
+  bornAt: number;
+  phase: number;
+  key: string;
+  data: TasteBuilding;
+  dispose: () => void;
+}
+
+function radialTexture(inner: string, outer: string, mid?: string) {
   const c = document.createElement("canvas");
   c.width = c.height = 128;
   const g = c.getContext("2d")!;
   const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
   grad.addColorStop(0, inner);
+  if (mid) grad.addColorStop(0.45, mid);
   grad.addColorStop(1, outer);
   g.fillStyle = grad;
   g.fillRect(0, 0, 128, 128);
@@ -35,10 +71,81 @@ function radialTexture(inner: string, outer: string) {
   return t;
 }
 
+/** Facade: 4 bays × 4 floors of windows, tiled in metres along every wall. Second map lights some windows. */
+const BAY_M = 3.4;
+const FLOOR_M = 3.2;
+function facadeTextures() {
+  const S = 512, cell = S / 4;
+  const mk = () => {
+    const c = document.createElement("canvas");
+    c.width = c.height = S;
+    return [c, c.getContext("2d")!] as const;
+  };
+  const [cc, g] = mk();
+  const [ec, e] = mk();
+  g.fillStyle = "#FFFFFF";
+  g.fillRect(0, 0, S, S);
+  e.fillStyle = "#000000";
+  e.fillRect(0, 0, S, S);
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let fy = 0; fy < 4; fy++) {
+    // Floor band and a faint string course.
+    g.fillStyle = "rgba(110,80,105,0.10)";
+    g.fillRect(0, fy * cell + cell - 10, S, 10);
+    for (let bx = 0; bx < 4; bx++) {
+      const x = bx * cell + cell * 0.27, y = fy * cell + cell * 0.2, w = cell * 0.46, h = cell * 0.56;
+      g.fillStyle = "#8F86B4";
+      g.fillRect(x, y, w, h);
+      g.fillStyle = "rgba(255,255,255,0.55)";
+      g.fillRect(x + 4, y + 4, w * 0.35, h * 0.3); // reflection
+      g.fillStyle = "#FFFFFF";
+      g.fillRect(x + w / 2 - 2, y, 4, h); // mullion
+      g.fillRect(x - 6, y + h, w + 12, 7); // sill
+      if (rnd() < 0.62) {
+        e.fillStyle = rnd() < 0.5 ? "#FFD49A" : "#FFC3A8";
+        e.fillRect(x + 3, y + 3, w - 6, h - 6);
+      }
+    }
+  }
+  const tex = (c: HTMLCanvasElement) => {
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(1 / (4 * BAY_M), 1 / (4 * FLOOR_M));
+    t.anisotropy = 4;
+    return t;
+  };
+  return { map: tex(cc), glow: tex(ec) };
+}
+
+const mix = (a: string, b: string, t: number) => new THREE.Color(a).lerp(new THREE.Color(b), t);
+
+function hash(s: string) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return h >>> 0;
+}
+
+function inPoly(x: number, y: number, pts: THREE.Vector2[]) {
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const a = pts[i], b = pts[j];
+    if (a.y > y !== b.y > y && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+
+const GARDEN: PlaceCategory[] = ["park", "garden", "tea", "community", "plaza"];
+const DOME: PlaceCategory[] = ["museum", "library", "arts_centre", "cinema"];
+
 /**
- * Three.js custom layer for Immersive mode: floating crystal markers over each recommendation,
- * a light column to the ground, a soft contact shadow and a tinted halo. Objects are placed at real
- * coordinates and scaled per frame so they keep a constant on-screen size at any zoom.
+ * Three.js custom layer for Immersive mode. Two kinds of objects share one scene, placed at real
+ * coordinates:
+ *  - floating crystal markers over the top recommendations (scaled per frame to a constant screen size)
+ *  - Taste Layer buildings: the real OSM footprint (when the basemap has one) rebuilt as a styled,
+ *    pastel building with lit windows, cornice, awning and a rooftop feature, plus a halo and a long
+ *    soft shadow. They're interpretations anchored to real places, not exact architecture.
  */
 export class ImmersiveLayer implements CustomLayerInterface {
   id = "es-immersive";
@@ -50,12 +157,18 @@ export class ImmersiveLayer implements CustomLayerInterface {
   private scene = new THREE.Scene();
   private camera = new THREE.Camera();
   private items = new Map<string, Item>();
+  private buildings = new Map<string, BuildingItem>();
   private origin = maplibregl.MercatorCoordinate.fromLngLat([0, 0], 0);
   private originScale = 1;
+  private hasOrigin = false;
   private gemGeo = new THREE.OctahedronGeometry(1, 0);
   private beamGeo = new THREE.CylinderGeometry(0.06, 0.06, 1, 8, 1, true);
   private discGeo = new THREE.CircleGeometry(1, 40);
+  private puffGeo = new THREE.IcosahedronGeometry(1, 0);
+  private bulbGeo = new THREE.SphereGeometry(1, 8, 6);
   private shadowTex = radialTexture("rgba(48,38,56,0.38)", "rgba(48,38,56,0)");
+  private longShadowTex = radialTexture("rgba(72,48,78,0.30)", "rgba(72,48,78,0)", "rgba(72,48,78,0.16)");
+  private facade?: { map: THREE.Texture; glow: THREE.Texture };
   private haloTextures = new Map<string, THREE.Texture>();
   private sparkles?: THREE.Points;
   private animate: boolean;
@@ -63,10 +176,14 @@ export class ImmersiveLayer implements CustomLayerInterface {
 
   constructor(opts: { animate: boolean }) {
     this.animate = opts.animate;
-    this.scene.add(new THREE.HemisphereLight(0xfff3ea, 0xd9c8e8, 1.6));
-    const sun = new THREE.DirectionalLight(0xffd9bd, 1.8);
-    sun.position.set(-0.6, 1, 0.4);
+    this.scene.add(new THREE.HemisphereLight(0xfff3ea, 0xd9c8e8, 1.7));
+    // Matches the basemap light (azimuth 210°): late sun from the south-southwest.
+    const sun = new THREE.DirectionalLight(0xffd2b0, 2.0);
+    sun.position.set(-0.5, 0.75, 0.87);
     this.scene.add(sun);
+    const fill = new THREE.DirectionalLight(0xc9c2f2, 0.5);
+    fill.position.set(0.6, 0.4, -0.7);
+    this.scene.add(fill);
   }
 
   onAdd(map: maplibregl.Map, gl: WebGL2RenderingContext) {
@@ -82,10 +199,13 @@ export class ImmersiveLayer implements CustomLayerInterface {
   onRemove() {
     for (const it of this.items.values()) this.disposeItem(it);
     this.items.clear();
-    this.gemGeo.dispose();
-    this.beamGeo.dispose();
-    this.discGeo.dispose();
+    for (const b of this.buildings.values()) b.dispose();
+    this.buildings.clear();
+    [this.gemGeo, this.beamGeo, this.discGeo, this.puffGeo, this.bulbGeo].forEach((g) => g.dispose());
     this.shadowTex.dispose();
+    this.longShadowTex.dispose();
+    this.facade?.map.dispose();
+    this.facade?.glow.dispose();
     this.haloTextures.forEach((t) => t.dispose());
     this.sparkles?.geometry.dispose();
     (this.sparkles?.material as THREE.Material | undefined)?.dispose();
@@ -99,7 +219,7 @@ export class ImmersiveLayer implements CustomLayerInterface {
     if (!t) {
       const c = new THREE.Color(color);
       const rgba = (a: number) => `rgba(${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)},${a})`;
-      t = radialTexture(rgba(0.75), rgba(0));
+      t = radialTexture(rgba(0.75), rgba(0), rgba(0.35));
       this.haloTextures.set(color, t);
     }
     return t;
@@ -113,18 +233,30 @@ export class ImmersiveLayer implements CustomLayerInterface {
     });
   }
 
+  /** Local metres east/south of the shared origin. */
+  private local(lon: number, lat: number) {
+    const m = maplibregl.MercatorCoordinate.fromLngLat([lon, lat], 0);
+    return new THREE.Vector3((m.x - this.origin.x) / this.originScale, 0, (m.y - this.origin.y) / this.originScale);
+  }
+
+  private setOrigin() {
+    if (!this.map) return;
+    this.origin = maplibregl.MercatorCoordinate.fromLngLat(this.map.getCenter(), 0);
+    this.originScale = this.origin.meterInMercatorCoordinateUnits();
+    this.hasOrigin = true;
+    for (const it of this.items.values()) it.group.position.copy(this.local(it.data.lon, it.data.lat));
+    for (const b of this.buildings.values()) b.group.position.copy(this.local(...b.center));
+  }
+
   setPoints(points: ImmersivePoint[]) {
     if (!this.map) return;
-    if (points.length) {
-      const c = this.map.getCenter();
-      this.origin = maplibregl.MercatorCoordinate.fromLngLat(c, 0);
-      this.originScale = this.origin.meterInMercatorCoordinateUnits();
-    }
+    if (points.length) this.setOrigin();
     const keep = new Set(points.map((p) => p.id));
-    for (const [id, it] of this.items) if (!keep.has(id)) {
-      this.disposeItem(it);
-      this.items.delete(id);
-    }
+    for (const [id, it] of this.items)
+      if (!keep.has(id)) {
+        this.disposeItem(it);
+        this.items.delete(id);
+      }
     for (const p of points) {
       let it = this.items.get(p.id);
       if (!it) {
@@ -145,12 +277,209 @@ export class ImmersiveLayer implements CustomLayerInterface {
         this.items.set(p.id, it);
       }
       it.data = p;
-      const m = maplibregl.MercatorCoordinate.fromLngLat([p.lon, p.lat], 0);
-      it.group.position.set((m.x - this.origin.x) / this.originScale, 0, (m.y - this.origin.y) / this.originScale);
-      (it.gem.material as THREE.MeshStandardMaterial).emissiveIntensity = p.selected ? 0.55 : 0.28;
+      it.group.position.copy(this.local(p.lon, p.lat));
+      (it.gem.material as THREE.MeshStandardMaterial).emissiveIntensity = p.selected ? 0.55 : p.muted ? 0.12 : 0.28;
     }
     this.updateSparkles();
     this.map.triggerRepaint();
+  }
+
+  setTasteBuildings(list: TasteBuilding[]) {
+    if (!this.map) return;
+    if (!this.hasOrigin) this.setOrigin();
+    const keep = new Set(list.map((b) => b.id));
+    for (const [id, b] of this.buildings)
+      if (!keep.has(id)) {
+        b.dispose();
+        this.buildings.delete(id);
+      }
+    for (const b of list) {
+      // Geometry only depends on shape and palette; selection/hover are animated in render().
+      const key = `${b.ring ? b.ring.length + ":" + b.ring[0].join(",") : "pavilion"}|${b.heightM}|${b.color}|${b.tier}`;
+      let item = this.buildings.get(b.id);
+      if (item && item.key !== key) {
+        item.dispose();
+        this.buildings.delete(b.id);
+        item = undefined;
+      }
+      if (!item) {
+        item = this.buildBuilding(b, key);
+        this.buildings.set(b.id, item);
+      }
+      item.data = b;
+    }
+    this.map.triggerRepaint();
+  }
+
+  private buildBuilding(b: TasteBuilding, key: string): BuildingItem {
+    this.facade ??= facadeTextures();
+    // Everything created here is disposed with the building.
+    const owned: { dispose(): void }[] = [];
+    const track = <T extends { dispose(): void }>(x: T) => (owned.push(x), x);
+
+    // Footprint in local metres around its own centroid; shape (x, y) = (east, north).
+    let ringLL = b.ring ? b.ring.slice(0, -1) : null;
+    if (ringLL && ringLL.length < 3) ringLL = null;
+    const center: [number, number] = ringLL
+      ? [ringLL.reduce((s, p) => s + p[0], 0) / ringLL.length, ringLL.reduce((s, p) => s + p[1], 0) / ringLL.length]
+      : [b.lon, b.lat];
+    const cm = maplibregl.MercatorCoordinate.fromLngLat(center, 0);
+    const ms = cm.meterInMercatorCoordinateUnits();
+    const pts: THREE.Vector2[] = ringLL
+      ? ringLL.map(([lon, lat]) => {
+          const m = maplibregl.MercatorCoordinate.fromLngLat([lon, lat], 0);
+          return new THREE.Vector2((m.x - cm.x) / ms, -(m.y - cm.y) / ms);
+        })
+      : [new THREE.Vector2(-8, -6), new THREE.Vector2(8, -6), new THREE.Vector2(8, 6), new THREE.Vector2(-8, 6)];
+    const r = pts.reduce((s, p) => s + p.length(), 0) / pts.length || 8;
+    const grow = (m: number) => new THREE.Shape(pts.map((p) => p.clone().multiplyScalar((r + m) / r)));
+    const extrude = (shape: THREE.Shape, depth: number) => {
+      const g = track(new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false }));
+      g.rotateX(-Math.PI / 2); // extrusion → up; shape y (north) → −z
+      return g;
+    };
+
+    const seed = hash(b.id);
+    const strong = b.tier === "strong";
+    const h = (b.ring ? Math.max(b.heightM, 7) : 12) + 0.6;
+    // Strong matches get the full colour; notable ones a paler wash of it.
+    const wallColor = mix(b.color, "#FFF6EF", strong ? 0.05 : 0.38);
+    const group = new THREE.Group();
+
+    const walls = track(
+      new THREE.MeshStandardMaterial({
+        color: wallColor,
+        map: this.facade.map,
+        emissive: 0xffffff,
+        emissiveMap: this.facade.glow,
+        emissiveIntensity: 0.5,
+        roughness: 0.72,
+        metalness: 0.02,
+      }),
+    );
+    const roof = track(new THREE.MeshStandardMaterial({ color: mix(b.color, "#FFFFFF", 0.55), roughness: 0.9 }));
+    const body = new THREE.Mesh(extrude(grow(0.7), h), [roof, walls]);
+    group.add(body);
+
+    // Cornice: a pale overhanging band at the roofline.
+    const trim = track(new THREE.MeshStandardMaterial({ color: "#FFF4E8", roughness: 0.6 }));
+    const cornice = new THREE.Mesh(extrude(grow(1.3), 0.7), trim);
+    cornice.position.y = h - 0.35;
+    group.add(cornice);
+
+    // Awning band over the ground floor, in the deep accent.
+    if (h > 8) {
+      const awning = new THREE.Mesh(extrude(grow(1.6), 0.35), track(new THREE.MeshStandardMaterial({ color: mix(b.deep, b.color, 0.35), roughness: 0.8 })));
+      awning.position.y = 3.3;
+      group.add(awning);
+    }
+
+    // Rooftop feature, chosen by kind of place (and a stable per-place seed for variety).
+    const roofTop = h + 0.35;
+    let lights: THREE.MeshStandardMaterial | undefined;
+    if (GARDEN.includes(b.category) || (!DOME.includes(b.category) && seed % 5 === 0)) {
+      const bed = new THREE.Mesh(extrude(new THREE.Shape(pts.map((p) => p.clone().multiplyScalar(0.8))), 0.45), track(new THREE.MeshStandardMaterial({ color: "#BFD3A6", roughness: 1 })));
+      bed.position.y = roofTop;
+      group.add(bed);
+      const leaf = [track(new THREE.MeshStandardMaterial({ color: "#A8C796", flatShading: true, roughness: 0.9 })), track(new THREE.MeshStandardMaterial({ color: "#C6D9A0", flatShading: true, roughness: 0.9 })), track(new THREE.MeshStandardMaterial({ color: "#F2B9C8", flatShading: true, roughness: 0.9 }))];
+      const inner = pts.map((p) => p.clone().multiplyScalar(0.72));
+      let placed = 0;
+      let st = (seed % 2147483646) + 1;
+      const rnd = () => (st = (st * 16807) % 2147483647) / 2147483647;
+      for (let i = 0; i < 60 && placed < Math.min(9, 3 + Math.round(r / 4)); i++) {
+        const x = (rnd() * 2 - 1) * r, y = (rnd() * 2 - 1) * r;
+        if (!inPoly(x, y, inner)) continue;
+        const s = 0.8 + rnd() * 0.9;
+        const puff = new THREE.Mesh(this.puffGeo, leaf[placed % 4 === 3 ? 2 : placed % 2]);
+        puff.scale.set(s, s * 1.15, s);
+        puff.position.set(x, roofTop + 0.45 + s, -y);
+        group.add(puff);
+        placed++;
+      }
+    } else if (DOME.includes(b.category)) {
+      const rd = Math.min(r * 0.42, 9);
+      const domeMat = track(new THREE.MeshStandardMaterial({ color: mix(b.color, "#FFFFFF", 0.25), roughness: 0.35, metalness: 0.15 }));
+      const drum = new THREE.Mesh(track(new THREE.CylinderGeometry(rd * 0.92, rd * 0.92, rd * 0.35, 28)), trim);
+      drum.position.y = roofTop + rd * 0.17;
+      const dome = new THREE.Mesh(track(new THREE.SphereGeometry(rd, 28, 14, 0, Math.PI * 2, 0, Math.PI / 2)), domeMat);
+      dome.position.y = roofTop + rd * 0.34;
+      const gold = track(new THREE.MeshStandardMaterial({ color: "#F0D277", emissive: "#F0D277", emissiveIntensity: 0.35, metalness: 0.6, roughness: 0.3 }));
+      const spire = new THREE.Mesh(track(new THREE.ConeGeometry(rd * 0.08, rd * 0.6, 8)), gold);
+      spire.position.y = roofTop + rd * 1.6;
+      group.add(drum, dome, spire);
+    } else {
+      // A little timber water tower — the neighbourhood's rooftop vernacular.
+      const wood = track(new THREE.MeshStandardMaterial({ color: "#C9A184", roughness: 0.95 }));
+      const tr = Math.min(1.8, r * 0.2);
+      const off = new THREE.Vector3(((seed % 3) - 1) * r * 0.25, 0, (((seed >> 3) % 3) - 1) * r * 0.25);
+      const tank = new THREE.Mesh(track(new THREE.CylinderGeometry(tr, tr, tr * 1.7, 14)), wood);
+      tank.position.set(off.x, roofTop + 1.8 + tr * 0.85, off.z);
+      const cap = new THREE.Mesh(track(new THREE.ConeGeometry(tr * 1.1, tr * 0.9, 14)), track(new THREE.MeshStandardMaterial({ color: mix(b.deep, "#59465F", 0.3), roughness: 0.8 })));
+      cap.position.set(off.x, roofTop + 1.8 + tr * 1.7 + tr * 0.45, off.z);
+      group.add(tank, cap);
+      const legGeo = track(new THREE.CylinderGeometry(0.1, 0.1, 1.8, 5));
+      for (let i = 0; i < 4; i++) {
+        const leg = new THREE.Mesh(legGeo, wood);
+        const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+        leg.position.set(off.x + Math.cos(a) * tr * 0.75, roofTop + 0.9, off.z + Math.sin(a) * tr * 0.75);
+        group.add(leg);
+      }
+    }
+
+    // Festoon lights along the roof edge on strong matches.
+    if (strong) {
+      lights = track(new THREE.MeshStandardMaterial({ color: "#FFF1C9", emissive: "#FFD98A", emissiveIntensity: 1.2 }));
+      const edge = pts.map((p) => p.clone().multiplyScalar((r + 0.9) / r));
+      const bulbs: THREE.Vector3[] = [];
+      for (let i = 0; i < edge.length; i++) {
+        const a = edge[i], c = edge[(i + 1) % edge.length];
+        const n = Math.max(1, Math.round(a.distanceTo(c) / 2.4));
+        for (let k = 0; k < n && bulbs.length < 160; k++) {
+          const p = a.clone().lerp(c, k / n);
+          bulbs.push(new THREE.Vector3(p.x, h + 0.75, -p.y));
+        }
+      }
+      const inst = track(new THREE.InstancedMesh(this.bulbGeo, lights, bulbs.length));
+      const m = new THREE.Matrix4();
+      bulbs.forEach((p, i) => inst.setMatrixAt(i, m.makeScale(0.2, 0.2, 0.2).setPosition(p)));
+      group.add(inst);
+    }
+
+    // Ground: a tinted halo and a long, soft late-afternoon shadow (away from the 210° sun).
+    const haloR = r * 1.5 + 14;
+    const halo = new THREE.Mesh(this.discGeo, track(new THREE.MeshBasicMaterial({ map: this.haloTex(b.color), transparent: true, depthWrite: false, opacity: strong ? 0.95 : 0.6 })));
+    halo.rotation.x = -Math.PI / 2;
+    halo.position.y = 0.25;
+    halo.scale.set(haloR, haloR, 1);
+    const pivot = new THREE.Group();
+    pivot.rotation.y = -Math.PI / 6;
+    const longShadow = new THREE.Mesh(this.discGeo, track(new THREE.MeshBasicMaterial({ map: this.longShadowTex, transparent: true, depthWrite: false })));
+    const len = r * 1.1 + h * 0.9;
+    longShadow.rotation.x = -Math.PI / 2;
+    longShadow.scale.set(r * 1.15, len, 1);
+    longShadow.position.set(0, 0.3, -len * 0.55);
+    pivot.add(longShadow);
+    group.add(halo, pivot);
+
+    group.position.copy(this.local(...center));
+    group.scale.y = this.animate ? 0.001 : 1;
+    this.scene.add(group);
+    return {
+      group,
+      walls,
+      halo,
+      haloR,
+      lights,
+      center,
+      bornAt: performance.now(),
+      phase: (seed % 628) / 100,
+      key,
+      data: b,
+      dispose: () => {
+        this.scene.remove(group);
+        owned.forEach((x) => x.dispose());
+      },
+    };
   }
 
   private updateSparkles() {
@@ -171,41 +500,59 @@ export class ImmersiveLayer implements CustomLayerInterface {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
     this.sparkles = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xfff1c9, size: 3, sizeAttenuation: false, transparent: true, opacity: 0.85, depthWrite: false }));
-    this.sparkles.userData.anchor = sel.group;
+    this.sparkles.userData.anchor = sel;
     this.scene.add(this.sparkles);
   }
 
   render(gl: WebGL2RenderingContext, args: CustomRenderMethodInput) {
-    if (!this.map || !this.renderer || !this.items.size) return;
+    if (!this.map || !this.renderer || (!this.items.size && !this.buildings.size)) return;
     const zoom = this.map.getZoom();
     const lat = this.map.getCenter().lat;
     // Metres per CSS pixel at this zoom (512px tiles).
     const mpp = (40075016.686 * Math.cos((lat * Math.PI) / 180)) / (512 * 2 ** zoom);
-    const t = performance.now() / 1000;
+    const now = performance.now();
+    const t = now / 1000;
 
     for (const it of this.items.values()) {
       const sel = it.data.selected;
-      const px = sel ? 22 : 15;
+      const px = sel ? 22 : it.data.muted ? 11 : 15;
       const size = px * mpp;
-      const born = it.bornAt ? Math.min(1, (performance.now() - it.bornAt) / 700) : 1;
+      const born = it.bornAt ? Math.min(1, (now - it.bornAt) / 700) : 1;
       const ease = 1 - (1 - born) ** 3;
       const bob = this.animate ? Math.sin(t * 1.6 + it.phase) * 3 * mpp : 0;
-      const height = (sel ? 96 : 72) * mpp * ease;
+      const lift = it.data.liftM;
+      const height = (lift + (sel ? 96 : 72) * mpp) * ease;
       it.gem.scale.set(size * 0.75, size * 1.25, size * 0.75);
       it.gem.position.y = height + bob;
       it.gem.rotation.y = this.animate ? t * (sel ? 0.9 : 0.35) + it.phase : it.phase;
       it.beam.scale.set(size * 0.9, height, size * 0.9);
       it.beam.position.y = height / 2;
-      const haloR = (sel ? 40 + (this.animate ? Math.sin(t * 2.2) * 5 : 0) : 24) * mpp;
+      const haloR = (sel ? 40 + (this.animate ? Math.sin(t * 2.2) * 5 : 0) : it.data.muted ? 14 : 24) * mpp;
       it.halo.scale.set(haloR, haloR, 1);
       it.halo.position.y = 0.3 * mpp;
+      it.halo.visible = !lift; // a building's own halo takes over
       const shadow = it.group.getObjectByName("shadow")!;
       shadow.scale.set(size * 1.4, size * 1.4, 1);
       shadow.position.y = 0.2 * mpp;
+      shadow.visible = !lift;
     }
+
+    for (const b of this.buildings.values()) {
+      const k = this.animate ? Math.min(1, (now - b.bornAt) / 1100) : 1;
+      b.group.scale.y = Math.max(0.001, 1 - (1 - k) ** 3);
+      const { selected, hovered, tier } = b.data;
+      const target = selected ? 1.05 : hovered ? 0.85 : tier === "strong" ? 0.55 : 0.4;
+      b.walls.emissiveIntensity = this.animate ? b.walls.emissiveIntensity + (target - b.walls.emissiveIntensity) * 0.15 : target;
+      const pulse = this.animate && (selected || tier === "strong") ? 1 + Math.sin(t * 1.4 + b.phase) * 0.06 : 1;
+      const r = b.haloR * (selected ? 1.35 : hovered ? 1.15 : 1) * pulse;
+      b.halo.scale.set(r, r, 1);
+      if (b.lights) b.lights.emissiveIntensity = this.animate ? 1 + Math.sin(t * 2 + b.phase) * 0.25 : 1.1;
+    }
+
     if (this.sparkles) {
-      const a = this.sparkles.userData.anchor as THREE.Group;
-      this.sparkles.position.copy(a.position);
+      const a = this.sparkles.userData.anchor as Item;
+      this.sparkles.position.copy(a.group.position);
+      this.sparkles.position.y += a.data.liftM;
       this.sparkles.scale.setScalar(26 * mpp);
       this.sparkles.rotation.y = t * 0.25;
     }
@@ -218,6 +565,7 @@ export class ImmersiveLayer implements CustomLayerInterface {
     this.camera.projectionMatrix = new THREE.Matrix4().fromArray(Array.from(args.defaultProjectionData.mainMatrix as ArrayLike<number>)).multiply(l);
     this.renderer.resetState();
     this.renderer.render(this.scene, this.camera);
-    if (this.animate) this.map.triggerRepaint();
+    const settling = [...this.buildings.values()].some((b) => now - b.bornAt < 1200);
+    if (this.animate || settling) this.map.triggerRepaint();
   }
 }
