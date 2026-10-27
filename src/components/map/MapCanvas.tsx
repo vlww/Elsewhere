@@ -10,15 +10,26 @@ import type { Recommendation } from "@/types";
 import { CATEGORY_LABEL, CATEGORY_META } from "@/components/places/categoryMeta";
 import type { TasteHighlight } from "@/lib/taste/highlights";
 import { useTasteHighlights } from "./useTasteHighlights";
-import { BASE_STYLE_URL, BUILDING_3D_COLOR, BUILDING_3D_COLOR_MUTED, buildElsewhereStyle, IMMERSIVE_SKY, TASTE_SKY } from "./mapStyle";
+import { BASE_STYLE_URL, BUILDING_2D_COLOR, BUILDING_2D_COLOR_MUTED, BUILDING_3D_COLOR, BUILDING_3D_COLOR_MUTED, buildElsewhereStyle, IMMERSIVE_SKY, TASTE_SKY } from "./mapStyle";
 import { ImmersiveLayer, type TasteBuilding } from "./ImmersiveLayer";
-import { findFootprints, type Footprint } from "./footprints";
+import { findAuraBuildings, findFootprints, type AuraBuilding, type Footprint } from "./footprints";
 import { mapRef, panelPadding, prefersReducedMotion } from "./mapRef";
 
 const MARKER_LIMIT = 14;
 /** Immersive draws the 3D city, which the basemap only has from z14; further out it's an empty plain. */
 const IMMERSIVE_MIN_ZOOM = 14;
 const TASTE_BUILDING_LIMIT = 16;
+/** Explore aura opacity per ring, before the travelling wave and the outward reveal. */
+const AURA_OPACITY: maplibregl.ExpressionSpecification = ["match", ["get", "level"], 1, 0.52, 2, 0.32, 0.16];
+const AURA_REACH_M = 190;
+
+/** Explore aura: rings revealed outward up to `reveal` metres, brightened where the wave front `front` passes. */
+function auraOpacity(reveal: number, front: number | null): maplibregl.ExpressionSpecification {
+  const shown: maplibregl.ExpressionSpecification = ["min", 1, ["max", 0, ["/", ["-", reveal, ["get", "dist"]], 40]]];
+  const bump: maplibregl.ExpressionSpecification =
+    front === null ? ["literal", 0] : ["*", 0.28, ["max", 0, ["-", 1, ["abs", ["/", ["-", ["get", "dist"], front], 32]]]]];
+  return ["*", shown, ["+", AURA_OPACITY, bump]];
+}
 // Copied from node_modules by scripts/copy-maplibre-worker.mjs.
 maplibregl.setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");
 const DEMO_CENTER: [number, number] = [-73.99735, 40.73085];
@@ -89,6 +100,11 @@ export function MapCanvas() {
   const footprints = useRef(new Map<string, Footprint | null>());
   const [footprintVersion, setFootprintVersion] = useState(0);
   const [immersiveVersion, setImmersiveVersion] = useState(0);
+  // Neighbouring buildings in the standouts' radiating rings, from loaded tiles.
+  const aura = useRef<AuraBuilding[]>([]);
+  const auraSig = useRef("");
+  const auraRevealAt = useRef(0);
+  const [auraVersion, setAuraVersion] = useState(0);
   const highlightRef = useRef<TasteHighlight[]>([]);
   const userMovedAt = useRef(0);
   const [attempt, setAttempt] = useState(0);
@@ -116,6 +132,19 @@ export function MapCanvas() {
   useEffect(() => {
     highlightRef.current = highlights;
   }, [highlights]);
+  /** Recomputes the standouts' rings from loaded tiles; true when the set of buildings changed. */
+  function refreshAura(map: maplibregl.Map) {
+    const seeds = highlightRef.current.filter((h) => h.tier === "strong");
+    const next = findAuraBuildings(map, seeds, footprints.current);
+    const sig = seeds.map((h) => h.placeId).join(",") + "#" + next.map((b) => b.key).join(",");
+    if (sig === auraSig.current) return false;
+    // Only replay the outward reveal when the standouts themselves change, not when more tiles arrive.
+    if (sig.split("#")[0] !== auraSig.current.split("#")[0]) auraRevealAt.current = performance.now();
+    auraSig.current = sig;
+    aura.current = next;
+    return true;
+  }
+
   // --- Create the map -------------------------------------------------------
   useEffect(() => {
     if (!container.current) return;
@@ -210,8 +239,10 @@ export function MapCanvas() {
           paint: { "circle-color": ["get", "color"], "circle-radius": 5.5, "circle-stroke-color": "#FFFFFF", "circle-stroke-width": 1.5 },
         });
         // Taste Layer (Explore): a soft wash where matches cluster, tinted real footprints, and halos.
-        // Inserted under the basemap labels so streets and names stay readable.
-        const beforeLabels = map.getStyle().layers.find((l) => l.type === "symbol")?.id;
+        // Directly above the 2D buildings (which this style draws after some labels), below everything else.
+        const styleLayers = map.getStyle().layers;
+        const afterBuildings = styleLayers[styleLayers.findIndex((l) => l.id === "building") + 1]?.id;
+        const beforeLabels = afterBuildings ?? styleLayers.find((l) => l.type === "symbol")?.id;
         map.addSource("es-taste-pts", { type: "geojson", data: emptyFC });
         map.addSource("es-taste-fp", { type: "geojson", data: emptyFC });
         map.addLayer(
@@ -239,6 +270,47 @@ export function MapCanvas() {
           },
           beforeLabels,
         );
+        // Radiating aura (Explore): real neighbouring buildings tinted in rings around each standout.
+        map.addSource("es-taste-aura", { type: "geojson", data: emptyFC });
+        map.addLayer(
+          {
+            id: "es-taste-aura",
+            type: "fill",
+            source: "es-taste-aura",
+            paint: { "fill-color": ["get", "color"], "fill-opacity": auraOpacity(0, null), "fill-outline-color": "rgba(255,255,255,0.7)" },
+          },
+          beforeLabels,
+        );
+        // The inner ring gets a coloured edge so the first buildings out read as part of the match.
+        map.addLayer(
+          {
+            id: "es-taste-aura-edge",
+            type: "line",
+            source: "es-taste-aura",
+            filter: ["==", ["get", "level"], 1],
+            paint: { "line-color": ["get", "deep"], "line-width": 1, "line-opacity": 0.45 },
+          },
+          beforeLabels,
+        );
+        // Ripples spreading out from the standouts, two out of phase (animated in an effect below).
+        for (const id of ["es-taste-ripple-0", "es-taste-ripple-1"])
+          map.addLayer(
+            {
+              id,
+              type: "circle",
+              source: "es-taste-pts",
+              filter: ["==", ["get", "tier"], "strong"],
+              paint: {
+                "circle-opacity": 0,
+                "circle-radius": 0,
+                "circle-stroke-color": ["get", "color"],
+                "circle-stroke-width": 2,
+                "circle-stroke-opacity": 0,
+                "circle-pitch-alignment": "map",
+              },
+            },
+            beforeLabels,
+          );
         map.addLayer(
           {
             id: "es-taste-halo",
@@ -325,13 +397,15 @@ export function MapCanvas() {
           const hs = highlightRef.current;
           if (!map || !hs.length || map.getZoom() < 14) return;
           const missing = hs.filter((h) => !footprints.current.get(h.placeId));
-          if (!missing.length) return;
           let changed = false;
-          for (const [id, fp] of findFootprints(map, missing)) {
-            if (fp && !footprints.current.get(id)) changed = true;
-            footprints.current.set(id, fp);
-          }
+          if (missing.length)
+            for (const [id, fp] of findFootprints(map, missing)) {
+              if (fp && !footprints.current.get(id)) changed = true;
+              footprints.current.set(id, fp);
+            }
           if (changed) setFootprintVersion((v) => v + 1);
+          // Newly loaded tiles can add buildings to the rings.
+          if (refreshAura(map)) setAuraVersion((v) => v + 1);
         });
 
         map.addSource("es-trail", { type: "geojson", data: emptyFC });
@@ -537,7 +611,29 @@ export function MapCanvas() {
     if (map.getLayer("es-taste-heat")) map.setLayoutProperty("es-taste-heat", "visibility", highlights.length >= 3 ? "visible" : "none");
     // In Immersive the 3D buildings replace the flat tint.
     for (const id of ["es-taste-fp-fill", "es-taste-fp-line"]) if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", immersiveOn ? "none" : "visible");
+    // The rest of the city recedes to neutral so the taste colours carry.
     if (map.getLayer("building-3d")) map.setPaintProperty("building-3d", "fill-extrusion-color", highlights.length ? BUILDING_3D_COLOR_MUTED : BUILDING_3D_COLOR);
+    if (map.getLayer("building")) map.setPaintProperty("building", "fill-color", highlights.length ? BUILDING_2D_COLOR_MUTED : BUILDING_2D_COLOR);
+    // Radiating rings around each standout: the same real buildings in both modes.
+    if (!highlights.length) {
+      aura.current = [];
+      auraSig.current = "";
+    } else if (map.getZoom() >= 14) refreshAura(map);
+    const colorOf = new Map(highlights.map((h) => [h.placeId, h.color]));
+    const deepOf = new Map(highlights.map((h) => [h.placeId, h.deep]));
+    const ringBuildings = aura.current.filter((b) => colorOf.has(b.seedId));
+    (map.getSource("es-taste-aura") as maplibregl.GeoJSONSource | undefined)?.setData({
+      type: "FeatureCollection",
+      features: ringBuildings.map((b) => ({
+        type: "Feature",
+        properties: { color: colorOf.get(b.seedId), deep: deepOf.get(b.seedId), level: b.level, dist: Math.round(b.distM) },
+        geometry: { type: "Polygon", coordinates: [b.ring] },
+      })),
+    });
+    for (const id of ["es-taste-aura", "es-taste-aura-edge"]) if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", immersiveOn ? "none" : "visible");
+    immersive.current?.setAura(
+      ringBuildings.map((b) => ({ key: b.key, ring: b.ring, heightM: b.heightM, color: colorOf.get(b.seedId)!, distM: b.distM, level: b.level })),
+    );
     if (immersiveOn) map.setSky(highlights.length ? TASTE_SKY : IMMERSIVE_SKY);
 
     immersive.current?.setTasteBuildings(
@@ -561,7 +657,51 @@ export function MapCanvas() {
       ),
     );
     immersive.current?.setPoints(immersivePoints(highlightById, footprints.current));
-  }, [ready, highlights, highlightById, mapMode, selectedPlaceId, hoveredPlaceId, footprintVersion, immersiveVersion]);
+  }, [ready, highlights, highlightById, mapMode, selectedPlaceId, hoveredPlaceId, footprintVersion, immersiveVersion, auraVersion]);
+
+  // Ripples radiate ~190 m from each standout every few seconds. Reduced motion: one still ring.
+  const hasStandouts = highlights.some((h) => h.tier === "strong");
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map || !map.getLayer("es-taste-ripple-0")) return;
+    const ids = ["es-taste-ripple-0", "es-taste-ripple-1"];
+    const RADIUS_M = 190, PERIOD = 3600;
+    // Ground metres → screen px at each zoom (512 px tiles), so the ring spans the same streets at any zoom.
+    const radiusExpr = (k: number) => {
+      const mpp0 = (40075016.686 * Math.cos((map.getCenter().lat * Math.PI) / 180)) / 512;
+      return ["interpolate", ["exponential", 2], ["zoom"], 10, (RADIUS_M * k * 2 ** 10) / mpp0, 20, (RADIUS_M * k * 2 ** 20) / mpp0] as maplibregl.ExpressionSpecification;
+    };
+    const paint = (i: number, k: number) => {
+      map.setPaintProperty(ids[i], "circle-radius", radiusExpr(Math.max(k, 0.02)));
+      map.setPaintProperty(ids[i], "circle-stroke-opacity", hasStandouts ? 0.7 * (1 - k) ** 1.5 : 0);
+      map.setPaintProperty(ids[i], "circle-stroke-width", 2.5 - 1.5 * k);
+    };
+    const auraLayer = map.getLayer("es-taste-aura") ? "es-taste-aura" : null;
+    if (!hasStandouts || prefersReducedMotion()) {
+      paint(0, 0.55);
+      paint(1, 1);
+      if (auraLayer) map.setPaintProperty(auraLayer, "fill-opacity", auraOpacity(AURA_REACH_M + 40, null));
+      return;
+    }
+    let raf = 0;
+    let last = 0;
+    const tick = (t: number) => {
+      raf = requestAnimationFrame(tick);
+      if (t - last < 50) return; // ~20 fps is plenty for a slow ripple
+      last = t;
+      for (let i = 0; i < 2; i++) paint(i, ((t / PERIOD + i / 2) % 1));
+      // The building wave rides the first ripple ring, and rings reveal outward after a change.
+      if (auraLayer) {
+        const reveal = Math.min(AURA_REACH_M + 40, (performance.now() - auraRevealAt.current) * 0.2);
+        map.setPaintProperty(auraLayer, "fill-opacity", auraOpacity(reveal, ((t / PERIOD) % 1) * RADIUS_M));
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(raf);
+      if (mapRef.current?.getLayer(ids[0])) ids.forEach((id) => map.setPaintProperty(id, "circle-stroke-opacity", 0));
+    };
+  }, [ready, hasStandouts]);
 
   // --- Saved pins (for saved places not already shown) -----------------------
   useEffect(() => {

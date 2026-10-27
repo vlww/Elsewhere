@@ -83,3 +83,88 @@ export function findFootprints(map: maplibregl.Map, points: { placeId: string; l
   }
   return out;
 }
+
+/** A real building around a top match, with its place in the radiating rings. */
+export interface AuraBuilding {
+  key: string;
+  seedId: string;
+  ring: [number, number][];
+  heightM: number;
+  /** Metres from the match to this building's centre. */
+  distM: number;
+  /** 1 = the next buildings out, 2 = the ones beyond, 3 = the outer fringe. */
+  level: 1 | 2 | 3;
+}
+
+/** Ring bands by distance from the match to a building's centre (not its nearest edge, so rings stay concentric). */
+const AURA_BANDS: [number, 1 | 2 | 3][] = [
+  [55, 1],
+  [105, 2],
+  [160, 3],
+];
+const AURA_MAX_PER_SEED = 45;
+
+/**
+ * The buildings around each match, banded into rings by centre distance. Each building belongs to its
+ * nearest match, the match's own building is skipped (it's drawn separately), and tile-split duplicates
+ * are merged. Uses tiles already loaded for the view; returns [] below z14 where buildings aren't in tiles.
+ */
+export function findAuraBuildings(
+  map: maplibregl.Map,
+  seeds: { placeId: string; lat: number; lon: number }[],
+  own: Map<string, Footprint | null>,
+): AuraBuilding[] {
+  if (!seeds.length || map.getZoom() < 14) return [];
+  let features: GeoJSON.Feature[];
+  try {
+    features = map.querySourceFeatures("openmaptiles", { sourceLayer: "building" });
+  } catch {
+    return [];
+  }
+  const cosLat = Math.cos((seeds[0].lat * Math.PI) / 180);
+  const M = 111320;
+  const outer = AURA_BANDS[AURA_BANDS.length - 1][0];
+  const ownKeys = new Set([...own.values()].filter((f): f is Footprint => !!f).map((f) => keyOf(f.ring)));
+  const best = new Map<string, AuraBuilding>();
+  for (const f of features) {
+    for (const ring of outerRings(f.geometry)) {
+      if (ring.length < 4) continue;
+      const key = keyOf(ring);
+      if (ownKeys.has(key)) continue;
+      let cx = 0, cy = 0;
+      for (let i = 0; i < ring.length - 1; i++) {
+        cx += ring[i][0];
+        cy += ring[i][1];
+      }
+      cx /= ring.length - 1;
+      cy /= ring.length - 1;
+      if (area(ring, cosLat) > 2e-6) continue; // skip block-sized complexes
+      for (const s of seeds) {
+        const d = Math.hypot((cx - s.lon) * cosLat * M, (cy - s.lat) * M);
+        if (d > outer || d < 6) continue;
+        const prev = best.get(key);
+        if (prev && prev.distM <= d) continue;
+        const h = Number(f.properties?.render_height);
+        best.set(key, {
+          key,
+          seedId: s.placeId,
+          ring: ring as [number, number][],
+          heightM: Number.isFinite(h) && h > 0 ? h : 10,
+          distM: d,
+          level: AURA_BANDS.find(([edge]) => d <= edge)![1],
+        });
+      }
+    }
+  }
+  const bySeed = new Map<string, AuraBuilding[]>();
+  for (const b of best.values()) bySeed.set(b.seedId, [...(bySeed.get(b.seedId) ?? []), b]);
+  return [...bySeed.values()].flatMap((list) => list.sort((a, b) => a.distM - b.distM).slice(0, AURA_MAX_PER_SEED));
+}
+
+/** Identifies a building outline across tiles (same first vertices ⇒ same building piece). */
+function keyOf(ring: Ring) {
+  return ring
+    .slice(0, 3)
+    .map(([x, y]) => `${x.toFixed(6)},${y.toFixed(6)}`)
+    .join("|");
+}

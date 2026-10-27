@@ -17,6 +17,39 @@ export interface ImmersivePoint {
 }
 
 /** A Taste Layer highlight drawn as an art-directed building. */
+/** A real neighbouring building tinted as part of a top match's radiating aura. */
+export interface AuraBuildingInput {
+  key: string;
+  ring: [number, number][];
+  heightM: number;
+  color: string;
+  distM: number;
+  level: 1 | 2 | 3;
+}
+
+interface AuraItem {
+  mesh: THREE.Mesh;
+  mat: THREE.MeshStandardMaterial;
+  center: [number, number];
+  distM: number;
+  /** How much of the match's colour this ring carries. */
+  k: number;
+  bornAt: number;
+  /** Set when the building leaves the aura: it fades out, then is disposed. */
+  leaveAt?: number;
+  dispose: () => void;
+}
+
+/** Ring strength: the next buildings out carry the colour, each ring beyond a little less. */
+const AURA_K = { 1: 0.64, 2: 0.32, 3: 0.12 } as const;
+const AURA_BASE = "#F6F1F1"; // matches BUILDING_3D_COLOR_MUTED's low-rise tone
+/** Rings appear outward from the match: this much delay per metre. */
+const AURA_STAGGER_MS_PER_M = 5;
+const AURA_FADE_MS = 700;
+/** A soft brightening travels outward from each match on this period, over this radius. */
+const WAVE_PERIOD_MS = 4200;
+const WAVE_REACH_M = 190;
+
 export interface TasteBuilding {
   id: string;
   lat: number;
@@ -158,6 +191,7 @@ export class ImmersiveLayer implements CustomLayerInterface {
   private camera = new THREE.Camera();
   private items = new Map<string, Item>();
   private buildings = new Map<string, BuildingItem>();
+  private aura = new Map<string, AuraItem>();
   private origin = maplibregl.MercatorCoordinate.fromLngLat([0, 0], 0);
   private originScale = 1;
   private hasOrigin = false;
@@ -200,6 +234,8 @@ export class ImmersiveLayer implements CustomLayerInterface {
     for (const it of this.items.values()) this.disposeItem(it);
     this.items.clear();
     for (const b of this.buildings.values()) b.dispose();
+    for (const a of this.aura.values()) a.dispose();
+    this.aura.clear();
     this.buildings.clear();
     [this.gemGeo, this.beamGeo, this.discGeo, this.puffGeo, this.bulbGeo].forEach((g) => g.dispose());
     this.shadowTex.dispose();
@@ -246,6 +282,7 @@ export class ImmersiveLayer implements CustomLayerInterface {
     this.hasOrigin = true;
     for (const it of this.items.values()) it.group.position.copy(this.local(it.data.lon, it.data.lat));
     for (const b of this.buildings.values()) b.group.position.copy(this.local(...b.center));
+    for (const a of this.aura.values()) a.mesh.position.copy(this.local(...a.center));
   }
 
   setPoints(points: ImmersivePoint[]) {
@@ -482,6 +519,62 @@ export class ImmersiveLayer implements CustomLayerInterface {
     };
   }
 
+  setAura(list: AuraBuildingInput[]) {
+    if (!this.map) return;
+    if (!this.hasOrigin) this.setOrigin();
+    const keep = new Set(list.map((a) => `${a.key}|${a.color}|${a.level}`));
+    const now = performance.now();
+    for (const [id, a] of this.aura) {
+      if (keep.has(id)) a.leaveAt = undefined;
+      else if (!this.animate) {
+        a.dispose();
+        this.aura.delete(id);
+      } else a.leaveAt ??= now + a.distM * 2; // outer rings linger a beat longer as it recedes
+    }
+    for (const a of list) {
+      const id = `${a.key}|${a.color}|${a.level}`;
+      if (this.aura.has(id)) continue;
+      const pts = a.ring.slice(0, -1);
+      const center: [number, number] = [pts.reduce((s, p) => s + p[0], 0) / pts.length, pts.reduce((s, p) => s + p[1], 0) / pts.length];
+      const cm = maplibregl.MercatorCoordinate.fromLngLat(center, 0);
+      const ms = cm.meterInMercatorCoordinateUnits();
+      const local = pts.map(([lon, lat]) => {
+        const m = maplibregl.MercatorCoordinate.fromLngLat([lon, lat], 0);
+        return new THREE.Vector2((m.x - cm.x) / ms, -(m.y - cm.y) / ms);
+      });
+      const r = local.reduce((sum, p) => sum + p.length(), 0) / local.length || 5;
+      // Slightly larger and taller than the basemap's own extrusion, so this coat sits just outside it.
+      const geo = new THREE.ExtrudeGeometry(new THREE.Shape(local.map((p) => p.multiplyScalar((r + 0.35) / r))), { depth: a.heightM + 0.35, bevelEnabled: false });
+      geo.rotateX(-Math.PI / 2);
+      const k = AURA_K[a.level];
+      const mat = new THREE.MeshStandardMaterial({
+        color: mix(AURA_BASE, a.color, k),
+        emissive: new THREE.Color(a.color),
+        emissiveIntensity: 0,
+        roughness: 0.85,
+        transparent: true,
+        opacity: 0,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.copy(this.local(...center));
+      this.scene.add(mesh);
+      this.aura.set(id, {
+        mesh,
+        mat,
+        center,
+        distM: a.distM,
+        k,
+        bornAt: now + a.distM * AURA_STAGGER_MS_PER_M,
+        dispose: () => {
+          this.scene.remove(mesh);
+          geo.dispose();
+          mat.dispose();
+        },
+      });
+    }
+    this.map.triggerRepaint();
+  }
+
   private updateSparkles() {
     if (this.sparkles) {
       this.scene.remove(this.sparkles);
@@ -505,7 +598,7 @@ export class ImmersiveLayer implements CustomLayerInterface {
   }
 
   render(gl: WebGL2RenderingContext, args: CustomRenderMethodInput) {
-    if (!this.map || !this.renderer || (!this.items.size && !this.buildings.size)) return;
+    if (!this.map || !this.renderer || (!this.items.size && !this.buildings.size && !this.aura.size)) return;
     const zoom = this.map.getZoom();
     const lat = this.map.getCenter().lat;
     // Metres per CSS pixel at this zoom (512px tiles).
@@ -549,6 +642,34 @@ export class ImmersiveLayer implements CustomLayerInterface {
       if (b.lights) b.lights.emissiveIntensity = this.animate ? 1 + Math.sin(t * 2 + b.phase) * 0.25 : 1.1;
     }
 
+    // Aura: each ring fades in after the one inside it, then a soft light wave keeps travelling outward.
+    const wave = ((now % WAVE_PERIOD_MS) / WAVE_PERIOD_MS) * (WAVE_REACH_M + 60) - 30;
+    for (const [id, a] of this.aura) {
+      const fadeIn = this.animate ? Math.min(1, Math.max(0, (now - a.bornAt) / AURA_FADE_MS)) : 1;
+      const fadeOut = a.leaveAt ? Math.min(1, Math.max(0, (now - a.leaveAt) / AURA_FADE_MS)) : 0;
+      if (fadeOut >= 1) {
+        a.dispose();
+        this.aura.delete(id);
+        continue;
+      }
+      const fade = fadeIn * (1 - fadeOut);
+      const eased = 1 - (1 - fade) ** 3;
+      if (fade < 1) {
+        if (!a.mat.transparent) {
+          a.mat.transparent = true;
+          a.mat.needsUpdate = true;
+        }
+        a.mat.opacity = eased;
+      } else if (a.mat.transparent) {
+        // Opaque once settled, so depth sorting can't make the coat flicker.
+        a.mat.transparent = false;
+        a.mat.opacity = 1;
+        a.mat.needsUpdate = true;
+      }
+      const bump = this.animate ? Math.max(0, 1 - Math.abs(wave - a.distM) / 34) : 0;
+      a.mat.emissiveIntensity = (0.08 + 0.42 * bump * bump) * a.k * eased * 1.6;
+    }
+
     if (this.sparkles) {
       const a = this.sparkles.userData.anchor as Item;
       this.sparkles.position.copy(a.group.position);
@@ -565,7 +686,7 @@ export class ImmersiveLayer implements CustomLayerInterface {
     this.camera.projectionMatrix = new THREE.Matrix4().fromArray(Array.from(args.defaultProjectionData.mainMatrix as ArrayLike<number>)).multiply(l);
     this.renderer.resetState();
     this.renderer.render(this.scene, this.camera);
-    const settling = [...this.buildings.values()].some((b) => now - b.bornAt < 1200);
+    const settling = [...this.buildings.values()].some((b) => now - b.bornAt < 1200) || [...this.aura.values()].some((a) => now - a.bornAt < AURA_FADE_MS || a.leaveAt !== undefined);
     if (this.animate || settling) this.map.triggerRepaint();
   }
 }
