@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { runAgent } from "@/lib/agent/run";
+import { looksLikeTrail } from "@/lib/trails/validate";
 import { AgentSessionSchema, CulturalEntitySchema, type AgentEvent, type SearchResult } from "@/types";
 
 export const maxDuration = 120;
@@ -11,6 +12,7 @@ const Body = z.object({
   history: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.unknown() })).max(160),
   session: AgentSessionSchema,
   result: z.unknown().nullable(),
+  trail: z.unknown().nullable().default(null),
   knownEntities: z.array(CulturalEntitySchema).max(60),
 });
 
@@ -21,7 +23,7 @@ function looksLikeResult(v: unknown): v is SearchResult {
 export async function POST(req: Request) {
   const parsed = Body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: "Invalid request" }, { status: 400 });
-  const { message, history, session, result, knownEntities } = parsed.data;
+  const { message, history, session, result, trail, knownEntities } = parsed.data;
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -33,6 +35,7 @@ export async function POST(req: Request) {
           userText: message,
           session,
           result: looksLikeResult(result) ? result : null,
+          trail: looksLikeTrail(trail) ? trail : null,
           knownEntities,
           send,
           signal: req.signal,

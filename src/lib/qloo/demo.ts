@@ -60,6 +60,7 @@ function placeFacets(p: Place): FacetVec {
     coworking: { design: 0.4, social: 0.3, craft: 0.2 },
     plaza: { social: 0.7, cinematic: 0.3 },
     community: { social: 0.8, art: 0.2 },
+    food: { social: 0.8, craft: 0.5, nostalgic: 0.2 },
     other: { craft: 0.3 },
   };
   const f: FacetVec = { ...base[p.category] };

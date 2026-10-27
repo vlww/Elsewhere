@@ -24,6 +24,8 @@ export function osmCategory(t: Record<string, string>): PlaceCategory | null {
   if (t.leisure === "garden") return "garden";
   if (t.leisure === "park") return "park";
   if (t.place === "square") return "plaza";
+  if (["restaurant", "fast_food", "food_court", "ice_cream"].includes(t.amenity ?? "")) return "food";
+  if (["bakery", "pastry", "deli"].includes(t.shop ?? "")) return "food";
   if (t.shop === "stationery") return "other";
   return null;
 }

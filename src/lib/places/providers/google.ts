@@ -8,6 +8,7 @@ const TYPE_GROUPS: { types: string[]; categories: PlaceCategory[] }[] = [
   { types: ["cafe", "coffee_shop", "tea_house"], categories: ["cafe", "tea"] },
   { types: ["library", "book_store"], categories: ["library", "bookstore"] },
   { types: ["park", "art_gallery", "museum"], categories: ["park", "garden", "gallery", "museum", "plaza"] },
+  { types: ["restaurant", "bakery"], categories: ["food"] },
 ];
 
 const GOOGLE_TO_CATEGORY: Record<string, PlaceCategory> = {
@@ -24,6 +25,9 @@ const GOOGLE_TO_CATEGORY: Record<string, PlaceCategory> = {
   botanical_garden: "garden",
   garden: "garden",
   plaza: "plaza",
+  restaurant: "food",
+  bakery: "food",
+  fast_food_restaurant: "food",
 };
 
 const PRICE: Record<string, number> = {

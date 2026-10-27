@@ -5,14 +5,17 @@ import { ProviderError } from "@/lib/places";
 import { entityTypeLabel, QlooError, resolveEntities, tasteMode } from "@/lib/qloo";
 import { CATEGORY_LABEL } from "@/lib/recommendations/activities";
 import { runSearch } from "@/lib/recommendations/pipeline";
-import { buildTrail } from "@/lib/recommendations/trail";
+import { planTrail, reviseTrail, TrailEditSchema, TrailError, type TrailContext } from "@/lib/trails/plan";
+import { fmtDuration } from "@/lib/trails/narrative";
 import { tasteHighlights } from "@/lib/taste/highlights";
 import {
   ACTIVITIES,
   PLACE_CATEGORIES,
   SearchConstraintsSchema,
   type AgentSession,
+  TRAIL_MODES,
   type ClientAction,
+  type TasteTrail,
   type CulturalEntity,
   type Recommendation,
   type SearchResult,
@@ -49,9 +52,50 @@ const inputs = {
   save_place: z.object({ place_id: z.string() }),
   unsave_place: z.object({ place_id: z.string() }),
   compare_places: z.object({ place_ids: z.array(z.string()).min(2).max(3) }),
-  build_taste_trail: z.object({
-    stops: z.number().int().min(2).max(4).optional(),
-    max_total_walk_min: z.number().min(5).max(90).optional(),
+  plan_trail: z.object({
+    stops: z
+      .array(z.array(Cat).min(1).max(6))
+      .min(2)
+      .max(5)
+      .optional()
+      .describe("Ordered stops; each lists the kinds of place that would do for it. Omit to let Elsewhere choose an arc from the mood."),
+    stop_count: z.number().int().min(2).max(5).optional(),
+    keep_order: z.boolean().optional().describe("True when the user listed stops in a sequence they want kept."),
+    mode: z.enum(TRAIL_MODES).optional(),
+    time_budget_min: z.number().min(20).max(720).optional(),
+    start_time: z.string().regex(/^\d{2}:\d{2}$/).optional().describe("Local HH:MM if the user gave one; omit for now."),
+    max_price_level: z.number().int().min(1).max(4).optional(),
+    max_leg_min: z.number().min(3).max(60).optional().describe("Longest hop between stops, e.g. 15 for 'within a 15-minute walk'."),
+    end_near_start: z.boolean().optional(),
+    exclude_categories: z.array(Cat).max(8).optional(),
+    must_include_place_ids: z.array(z.string()).max(4).optional(),
+    surprise: z.boolean().optional().describe("Reach past the obvious top matches."),
+    mood: z.array(z.string().max(30)).max(6).optional().describe("The user's own mood words: creative, slow, date, dinner, film, cheap…"),
+    outdoor: z.boolean().optional(),
+    use_taste: z.boolean().optional(),
+  }),
+  revise_trail: z.object({
+    edits: z
+      .array(TrailEditSchema)
+      .max(6)
+      .default([])
+      .describe("Stop numbers are 1-based in the current trail order. replace.because: not-my-vibe | too-expensive | less-touristy | outdoors | different."),
+    mode: z.enum(TRAIL_MODES).optional(),
+    time_budget_min: z.number().min(20).max(720).optional(),
+    start_time: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+    max_price_level: z.number().int().min(1).max(4).optional(),
+    max_leg_min: z.number().min(3).max(60).optional(),
+    end_near_start: z.boolean().optional(),
+    surprise: z.boolean().optional(),
+  }),
+  set_trail_story: z.object({
+    title: z.string().min(3).max(60).optional(),
+    summary: z.string().min(10).max(320).optional(),
+    stop_notes: z
+      .array(z.object({ place_id: z.string(), note: z.string().min(5).max(220) }))
+      .max(5)
+      .optional()
+      .describe("One line per stop on why it belongs and how it connects to the last — grounded in the trail's evidence."),
   }),
 } as const;
 type ToolName = keyof typeof inputs;
@@ -74,8 +118,12 @@ const DESCRIPTIONS: Record<ToolName, string> = {
   save_place: "Save a place from the current results to the user's Saved list.",
   unsave_place: "Remove a place from the Saved list.",
   compare_places: "Open a side-by-side comparison of 2–3 places from the current results and return their differences.",
-  build_taste_trail:
-    "Build a short walking route through 2–4 distinct kinds of places from the current results (taste-aware when interests are active). Shown on the map.",
+  plan_trail:
+    "Plan a Taste Trail: a routed, timed outing through 2–5 real places, drawn on the map with a full itinerary panel. Translate the request into structure — ordered stops (kinds of place), time budget, mode, price cap, max hop, mood words. Uses active interests via Qloo, the place provider, OSRM routing and listed hours. Returns the itinerary with per-stop evidence, legs, timings and assumptions. Replaces any current trail.",
+  revise_trail:
+    "Change the current trail without rebuilding it: remove / replace / add stops, change the time at a stop, 'more like' a stop, or adjust time budget, mode, price cap, max hop, finishing near the start, or surprise. Kept stops stay put; affected legs, times and the map update together. Returns the revised itinerary and what changed.",
+  set_trail_story:
+    "Optionally give the current trail your own title, a one-paragraph summary and one line per stop, shown alongside Elsewhere's facts. Write only from the trail's evidence; don't add facts (hours, prices, atmosphere) that aren't in it.",
 };
 
 const asJsonSchema = (s: z.ZodType) => {
@@ -96,7 +144,8 @@ export const TOOL_STATUS: Partial<Record<ToolName, string>> = {
   find_cultural_entities: "Looking up that reference…",
   get_place_details: "Checking the details…",
   compare_places: "Lining them up…",
-  build_taste_trail: "Sketching a route…",
+  plan_trail: "Sketching a trail…",
+  revise_trail: "Reworking the trail…",
 };
 
 // ---------------------------------------------------------------------------
@@ -106,6 +155,8 @@ export const TOOL_STATUS: Partial<Record<ToolName, string>> = {
 export interface ToolContext {
   session: AgentSession;
   result: SearchResult | null;
+  /** The trail currently on the map, if any. */
+  trail: TasteTrail | null;
   knownEntities: CulturalEntity[];
   emit: (a: ClientAction) => void;
   status: (label: string) => void;
@@ -157,6 +208,45 @@ function highlightSummary(result: SearchResult, signals: CulturalEntity[]) {
     basis:
       "Highlighted = the strongest places carrying cultural evidence (Qloo Insights affinity in live mode, simulated in demo), at most 14. 'strong' = roughly the top quarter by affinity among these results. Colours only key which interest contributed most.",
   };
+}
+
+/** The itinerary as the guide sees it: facts, estimates and evidence, clearly separated. */
+function compactTrail(t: TasteTrail) {
+  return {
+    title: t.story?.title ?? t.title,
+    theme: t.theme,
+    mode: t.mode,
+    routed_for: t.routing.effectiveMode,
+    routing: t.routing.live ? `live (${t.routing.provider})` : "estimated (routing unavailable)",
+    starts: t.startAt,
+    ends_estimate: t.endAt,
+    total: fmtDuration(t.totalMin),
+    travel: fmtDuration(t.travelMin),
+    cultural: t.cultural,
+    stops: t.stops.map((s) => ({
+      n: s.order,
+      id: s.placeId,
+      name: s.place.name,
+      category: CATEGORY_LABEL[s.place.category],
+      arrive_estimate: s.arriveAt,
+      stay_estimate_min: s.plannedMin,
+      leg_in: { minutes: s.legIn.durationMin, meters: s.legIn.distanceM, routed: s.legIn.source === "osrm" },
+      hours_at_arrival: s.openAtArrival.detail,
+      price: s.place.priceLevel ? "$".repeat(s.place.priceLevel) : "not listed",
+      address: s.place.address ?? "not listed",
+      cultural: s.culturalRationale ?? null,
+      qloo_tags: s.rec.cultural?.qlooTags.slice(0, 4) ?? [],
+    })),
+    back_to_start: t.legOut ? { minutes: t.legOut.durationMin } : undefined,
+    assumptions: t.assumptions,
+    change: t.changeNote,
+  };
+}
+
+function trailContext(ctx: ToolContext): TrailContext | null {
+  const s = ctx.session;
+  if (!s.location) return null;
+  return { location: s.location, tasteSignals: s.tasteSignals, feedback: s.feedback, clientNow: s.clientNow, onStatus: ctx.status };
 }
 
 function findRec(ctx: ToolContext, id: string) {
@@ -295,6 +385,86 @@ export async function executeTool(name: string, rawInput: unknown, ctx: ToolCont
       return { taste_layer: true, ...highlightSummary(ctx.result, s.tasteSignals) };
     }
 
+    case "plan_trail": {
+      const tc = trailContext(ctx);
+      if (!tc) {
+        ctx.emit({ type: "need_location" });
+        return err("No location yet. Ask where they're starting from, then call set_location.");
+      }
+      try {
+        const trail = await planTrail(
+          {
+            slots: input.stops as never,
+            stops: (input.stop_count as number | undefined) ?? ((input.stops as unknown[] | undefined)?.length || undefined),
+            keepOrder: (input.keep_order as boolean) ?? false,
+            mode: input.mode as never,
+            timeBudgetMin: input.time_budget_min as number,
+            startTime: input.start_time as string,
+            maxPriceLevel: input.max_price_level as number,
+            maxLegMin: input.max_leg_min as number,
+            endNearStart: input.end_near_start as boolean,
+            excludeCategories: input.exclude_categories as never,
+            mustIncludePlaceIds: input.must_include_place_ids as string[],
+            surprise: input.surprise as boolean,
+            mood: input.mood as string[],
+            requireOutdoor: input.outdoor as boolean,
+            useTaste: (input.use_taste as boolean) ?? true,
+          },
+          tc,
+        );
+        ctx.trail = trail;
+        ctx.emit({ type: "trail", trail });
+        return compactTrail(trail);
+      } catch (e) {
+        if (e instanceof TrailError || e instanceof ProviderError) return err(e instanceof ProviderError ? e.userMessage : e.message);
+        throw e;
+      }
+    }
+
+    case "revise_trail": {
+      const tc = trailContext(ctx);
+      if (!ctx.trail) return err("There's no trail on the map to revise. Plan one first.");
+      if (!tc) return err("No location for this trail.");
+      try {
+        const trail = await reviseTrail(
+          ctx.trail,
+          (input.edits as never) ?? [],
+          Object.fromEntries(
+            Object.entries({
+              mode: input.mode,
+              timeBudgetMin: input.time_budget_min,
+              startTime: input.start_time,
+              maxPriceLevel: input.max_price_level,
+              maxLegMin: input.max_leg_min,
+              endNearStart: input.end_near_start,
+              surprise: input.surprise,
+            }).filter(([, v]) => v !== undefined),
+          ),
+          tc,
+        );
+        ctx.trail = trail;
+        ctx.emit({ type: "trail", trail });
+        return compactTrail(trail);
+      } catch (e) {
+        if (e instanceof TrailError || e instanceof ProviderError) return err(e instanceof ProviderError ? e.userMessage : e.message);
+        throw e;
+      }
+    }
+
+    case "set_trail_story": {
+      if (!ctx.trail) return err("There's no trail to write for.");
+      const ids = new Set(ctx.trail.stops.map((s) => s.placeId));
+      const notes = ((input.stop_notes as { place_id: string; note: string }[]) ?? []).filter((n) => ids.has(n.place_id));
+      const story = {
+        title: (input.title as string) ?? ctx.trail.story?.title,
+        summary: (input.summary as string) ?? ctx.trail.story?.summary,
+        notes: { ...(ctx.trail.story?.notes ?? {}), ...Object.fromEntries(notes.map((n) => [n.place_id, n.note])) },
+      };
+      ctx.trail = { ...ctx.trail, story };
+      ctx.emit({ type: "trail_story", trailId: ctx.trail.id, story });
+      return { ok: true, ignored_notes: ((input.stop_notes as unknown[]) ?? []).length - notes.length };
+    }
+
     case "focus_place": {
       const r = findRec(ctx, input.place_id as string);
       if (!r) return err("That place isn't in the current results.");
@@ -338,17 +508,5 @@ export async function executeTool(name: string, rawInput: unknown, ctx: ToolCont
       return { compared: recs.map((r) => compactRec(r, s.lensMode)) };
     }
 
-    case "build_taste_trail": {
-      if (!ctx.result?.recommendations.length) return err("Search first, then build a trail from the results.");
-      const trail = buildTrail(ctx.result.recommendations, {
-        stops: (input.stops as number) ?? 3,
-        maxLegMin: 15,
-        maxTotalMin: (input.max_total_walk_min as number) ?? 35,
-        useTaste: s.tasteSignals.length > 0,
-      });
-      if (!trail) return err("Couldn't find enough distinct, open places within walking distance of each other. Try a wider radius.");
-      ctx.emit({ type: "trail", trail });
-      return trail;
-    }
   }
 }

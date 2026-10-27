@@ -26,16 +26,19 @@ All third-party keys stay on the server. Google photos go through `/api/photo` s
 
 ```
 src/
-  app/api/            chat (streaming agent) · recommend · entities · geocode · photo · status
+  app/api/            chat (streaming agent) · recommend · trail · entities · geocode · photo · status
   lib/agent/          system prompt, typed tool layer (zod-validated), streaming tool loop
   lib/qloo/           API client, entity resolution, insights → evidence adapter, demo fixture
   lib/places/         provider chain (google / overpass / demo), OSM normalisation, opening hours
-  lib/recommendations activity-fit table, deterministic ranking, pipeline, taste trails
+  lib/recommendations activity-fit table, deterministic ranking, pipeline
+  lib/trails/         Taste Trails: spec → selection → routed order → timing; revisions; editorial estimates
+  lib/routing/        OSRM duration matrix + per-leg street geometry, with labelled fallbacks
   store/              zustand store shared by the map, panels and agent
   components/map      MapLibre canvas, recoloured style, three.js immersive layer, controls
   components/chat     guide panel + composer
   components/places   cards, detail, compare, saved
   components/taste    interest search + chips
+  components/trails   itinerary panel, shared route geometry (2D + 3D)
   types/              shared models + zod schemas
 ```
 
@@ -58,7 +61,7 @@ Qloo's affinity is shown raw and never as a percentage. The total is labelled as
 
 **Matching Qloo to places:** Insights is called with `filter.type=urn:entity:place`, `signal.interests.entities`, a WKT `POINT` + radius and `feature.explainability=true`. Each Qloo place is matched to the inventory by name tokens and distance under 150 m. Unmatched Qloo places in a supported category join the shared candidate pool for *both* lenses, so the comparison isn't rigged. Per-interest contributions come from `query.explainability`.
 
-**Taste Trails** greedily chain 2–4 distinct kinds of open places within walking limits. The route is labelled as Elsewhere's synthesis; only each stop's own evidence is presented as cultural signal.
+**Taste Trails** turn a request into a routed, timed outing through 2–5 real places. The guide parses intent into a validated spec (ordered kinds of place, time budget, mode, price cap, longest hop, mood); `lib/trails` fetches candidates through the shared pipeline (places + Qloo), picks the best walkable combination (taste-aware when interests exist), orders it by OSRM travel time with a gentle preference for a good arc (a meal last), checks listed hours at each estimated arrival (swapping stops that would be closed), and fits the time budget by trimming stays, then dropping the weakest stop. Revisions lock untouched stops and recompute only what changed. Provider facts, Elsewhere's estimates (stays, arrival times) and the guide's own narrative (`set_trail_story`) are stored separately and labelled as such. The same geometry renders as an animated gradient route in Explore and a luminous path with stop beacons in Immersive.
 
 ## Data honesty
 

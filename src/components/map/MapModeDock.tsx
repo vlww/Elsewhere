@@ -54,11 +54,11 @@ export function MapModeDock({ compact = false }: { compact?: boolean }) {
           <span className="relative flex-1 text-left">Taste Layer</span>
           <span
             aria-hidden
-            className={cx("relative h-[18px] w-8 rounded-full transition-colors duration-300", tasteLayer ? "bg-rose-deep" : "bg-aubergine/15")}
+            className={cx("relative block h-[18px] w-8 shrink-0 rounded-full transition-colors duration-300", tasteLayer ? "bg-rose-deep" : "bg-aubergine/15")}
           >
             <span
               className={cx(
-                "absolute top-[2px] h-[14px] w-[14px] rounded-full bg-white shadow-sm transition-transform duration-300 ease-[var(--ease-out-soft)]",
+                "absolute left-0 top-[2px] h-[14px] w-[14px] rounded-full bg-white shadow-sm transition-transform duration-300 ease-[var(--ease-out-soft)]",
                 tasteLayer ? "translate-x-[16px]" : "translate-x-[2px]",
               )}
             />

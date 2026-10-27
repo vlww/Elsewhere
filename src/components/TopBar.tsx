@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Bookmark, MapPin, Search, Sparkles } from "lucide-react";
+import { Bookmark, Footprints, MapPin, Search, Sparkles } from "lucide-react";
 import { useElsewhere } from "@/store/useElsewhere";
 import { Chip, cx } from "@/components/ui/primitives";
 import { LocationSearch } from "./LocationGate";
+import { Logo } from "./Logo";
 
 export function TopBar() {
   const location = useElsewhere((s) => s.location);
@@ -13,18 +14,20 @@ export function TopBar() {
   const setPanel = useElsewhere((s) => s.setPanel);
   const savedCount = useElsewhere((s) => Object.keys(s.saved).length);
   const tasteCount = useElsewhere((s) => s.tasteSignals.length);
+  const trailStops = useElsewhere((s) => s.trail?.stops.length ?? 0);
   const [editing, setEditing] = useState(false);
 
   const nav = [
     { id: "results" as const, label: "Explore", icon: Search },
     { id: "saved" as const, label: "Saved", icon: Bookmark, count: savedCount },
     { id: "taste" as const, label: "Taste", icon: Sparkles, count: tasteCount },
+    { id: "trail" as const, label: "Trail", icon: Footprints, count: trailStops },
   ];
 
   return (
     <header className="pointer-events-auto flex items-center gap-2">
-      <div className="surface flex h-12 items-center gap-1 rounded-full pl-4 pr-1.5">
-        <h1 className="mr-2 font-serif text-[26px] italic leading-none tracking-[-0.01em] text-aubergine">Elsewhere</h1>
+      <div className="surface flex h-12 items-center gap-1 rounded-full pl-3 pr-1.5">
+        <Logo />
         <div className="relative">
           <button
             onClick={() => setEditing((v) => !v)}

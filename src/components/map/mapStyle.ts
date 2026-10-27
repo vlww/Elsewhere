@@ -22,7 +22,7 @@ const C = {
   rail: "#D8C6D2",
   path: "#E6C9BE",
   building: "#F1DDD5",
-  buildingLine: "#E5C9C0",
+  buildingLine: "#DDBFB6",
   label: "#59465F",
   labelStrong: "#302638",
   halo: "#FFF9F4",
@@ -58,6 +58,10 @@ const FILL: Record<string, string> = {
   road_area_pattern: "#FFF6EF",
   building: C.building,
 };
+
+/** Explore buildings, and the neutral porcelain they recede to while the Taste Layer is lit. */
+export const BUILDING_2D_COLOR = C.building;
+export const BUILDING_2D_COLOR_MUTED = "#ECE6E6";
 
 /** Immersive city: warm ivory low-rise fading to lavender towers. */
 export const BUILDING_3D_COLOR = [
@@ -101,7 +105,11 @@ export function buildElsewhereStyle(base: StyleSpecification): StyleSpecificatio
           l.paint["fill-color"] = FILL[l.id];
           delete l.paint["fill-pattern"];
         }
-        if (l.id === "building") l.paint["fill-outline-color"] = C.buildingLine;
+        if (l.id === "building") {
+          l.paint["fill-outline-color"] = C.buildingLine;
+          // Liberty hands buildings to the 3D layer past z14; Explore is flat, so keep the 2D outlines at every zoom.
+          delete (l as { maxzoom?: number }).maxzoom;
+        }
         if (l.id === "landuse_residential") l.paint["fill-opacity"] = 0.6;
         break;
       case "line": {

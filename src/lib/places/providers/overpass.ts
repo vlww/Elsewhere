@@ -18,6 +18,7 @@ const SELECTORS: Record<PlaceCategory, string[]> = {
   music: ['["shop"="music"]'],
   community: ['["amenity"="community_centre"]'],
   plaza: ['["place"="square"]'],
+  food: ['["amenity"~"^(restaurant|fast_food|food_court|ice_cream)$"]', '["shop"~"^(bakery|pastry|deli)$"]'],
   other: [],
 };
 

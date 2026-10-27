@@ -1,9 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { Instrument_Serif, Manrope } from "next/font/google";
+import { Manrope, Pirata_One } from "next/font/google";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./globals.css";
 
-const serif = Instrument_Serif({ variable: "--font-serif", subsets: ["latin"], weight: "400", style: ["normal", "italic"] });
+// Display face for titles and headings (single weight; blackletter, so no true italic).
+const serif = Pirata_One({ variable: "--font-serif", subsets: ["latin", "latin-ext"], weight: "400" });
 const sans = Manrope({ variable: "--font-sans", subsets: ["latin"] });
 
 export const metadata: Metadata = {

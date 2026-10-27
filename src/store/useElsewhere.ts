@@ -16,8 +16,10 @@ import type {
   SearchConstraints,
   SearchResult,
   TasteTrail,
+  TrailSpec,
   UserLocation,
 } from "@/types";
+import type { TrailEdit, TrailPatch } from "@/lib/trails/plan";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -52,7 +54,12 @@ export interface SavedPlace {
 }
 
 export type MapMode = "explore" | "immersive";
-export type Panel = "results" | "saved" | "taste" | null;
+export type Panel = "results" | "saved" | "taste" | "trail" | null;
+
+export interface SavedTrail {
+  trail: TasteTrail;
+  savedAt: string;
+}
 export type MobileTab = "map" | "guide" | "places";
 
 interface State {
@@ -77,6 +84,13 @@ interface State {
   compareIds: string[];
   compareOpen: boolean;
   trail: TasteTrail | null;
+  /** Index of the trail stop being looked at (tour / stop list), shared by both map modes. */
+  trailStop: number | null;
+  trailBusy: string | null;
+  trailError: string | null;
+  savedTrails: SavedTrail[];
+  /** Lighter 3D and no ambient animation, for slower devices. */
+  lowPower: boolean;
   mapMode: MapMode;
   /** Taste Layer: a presentation over the same results, drawn by whichever map mode is active. */
   tasteLayer: boolean;
@@ -111,6 +125,14 @@ interface Actions {
   toggleCompare(id: string): void;
   setCompareOpen(v: boolean): void;
   clearTrail(): void;
+  planTrail(spec: Partial<TrailSpec>, label?: string): Promise<void>;
+  reviseTrail(edits: TrailEdit[], patch?: TrailPatch, label?: string): Promise<void>;
+  setTrailStop(i: number | null, opts?: { focus?: boolean }): void;
+  frameTrail(): void;
+  saveTrail(): void;
+  openSavedTrail(id: string): void;
+  deleteSavedTrail(id: string): void;
+  setLowPower(v: boolean): void;
   setMapMode(m: MapMode): void;
   setTasteLayer(on: boolean): void;
   setPanel(p: Panel): void;
@@ -151,7 +173,7 @@ export const useElsewhere = create<State & Actions>()(
       const applyAction = (a: ClientAction): ChatNote | null => {
         switch (a.type) {
           case "set_location":
-            set({ location: a.location, trail: null });
+            set({ location: a.location, trail: null, trailStop: null });
             return { kind: "location", text: `Moved to ${a.location.label.split(",")[0]}` };
           case "set_constraints":
             set({ constraints: a.constraints });
@@ -161,8 +183,8 @@ export const useElsewhere = create<State & Actions>()(
               result: a.result,
               searchError: null,
               searchStartedAt: Date.now(),
-              fitRequest: Date.now(),
-              trail: null,
+              // A trail on the map stays while the results around it change.
+              fitRequest: get().trail ? get().fitRequest : Date.now(),
               compareIds: get().compareIds.filter((id) => a.result.recommendations.some((r) => r.place.id === id)),
               hiddenCategories: [],
             });
@@ -198,14 +220,58 @@ export const useElsewhere = create<State & Actions>()(
           case "compare":
             set({ compareIds: a.placeIds, compareOpen: true });
             return { kind: "compare", text: `Comparing ${a.placeIds.length} places` };
-          case "trail":
-            set({ trail: a.trail, fitRequest: Date.now() });
-            return { kind: "trail", text: `Trail: ${a.trail.stops.length} stops, ${a.trail.totalWalkMin} min walking` };
+          case "trail": {
+            const revised = get().trail?.id === a.trail.id;
+            showTrail(a.trail);
+            return {
+              kind: "trail",
+              text: revised ? `Trail updated · ${a.trail.changeNote ?? "recalculated"}` : `Trail: ${a.trail.stops.length} stops · about ${Math.round(a.trail.totalMin / 5) * 5} min`,
+            };
+          }
+          case "trail_story": {
+            const t = get().trail;
+            if (t?.id === a.trailId) set({ trail: { ...t, story: a.story } });
+            return null;
+          }
           case "entity_choices":
             set({ knownEntities: [...get().knownEntities, ...a.entities].slice(-60) });
             return null;
           case "need_location":
             return { kind: "location", text: "Needs a location" };
+        }
+      };
+
+      /** Puts a trail on the map and opens its panel. */
+      const showTrail = (trail: TasteTrail) =>
+        set({
+          trail,
+          trailStop: null,
+          trailError: null,
+          panel: "trail",
+          mobileTab: get().mobileTab === "map" ? "map" : "places",
+          fitRequest: Date.now(),
+          searchStartedAt: Date.now(),
+          selectedPlaceId: null,
+          detailOpen: false,
+        });
+
+      const trailRequest = async (body: Record<string, unknown>, label: string) => {
+        const s = get();
+        if (!s.location) return;
+        set({ trailBusy: label, trailError: null, panel: "trail" });
+        try {
+          const res = await fetch("/api/trail", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...body, location: s.location, tasteSignals: s.tasteSignals, feedback: s.feedback.slice(-50), clientNow: clientNow() }),
+          });
+          const json = await res.json();
+          if (!res.ok) set({ trailError: json.error ?? "Couldn't plan that trail." });
+          else showTrail(json.trail as TasteTrail);
+        } catch {
+          set({ trailError: "Couldn't reach Elsewhere's server. Check your connection." });
+        } finally {
+          set({ trailBusy: null });
         }
       };
 
@@ -243,6 +309,11 @@ export const useElsewhere = create<State & Actions>()(
         compareIds: [],
         compareOpen: false,
         trail: null,
+        trailStop: null,
+        trailBusy: null,
+        trailError: null,
+        savedTrails: [],
+        lowPower: false,
         mapMode: "explore",
         tasteLayer: false,
         focusRequest: null,
@@ -265,7 +336,7 @@ export const useElsewhere = create<State & Actions>()(
         },
 
         setLocation(loc, search = true) {
-          set({ location: loc, trail: null, selectedPlaceId: null, detailOpen: false });
+          set({ location: loc, trail: null, trailStop: null, selectedPlaceId: null, detailOpen: false });
           if (search) void get().runSearch();
         },
 
@@ -408,7 +479,30 @@ export const useElsewhere = create<State & Actions>()(
           set({ compareIds: c.includes(id) ? c.filter((x) => x !== id) : [...c, id].slice(-3) });
         },
         setCompareOpen: (v) => set({ compareOpen: v }),
-        clearTrail: () => set({ trail: null }),
+        clearTrail: () => set({ trail: null, trailStop: null, trailError: null, panel: get().panel === "trail" ? "results" : get().panel }),
+        planTrail: (spec, label = "Planning your trail…") => trailRequest({ op: "plan", spec }, label),
+        async reviseTrail(edits, patch = {}, label = "Reworking the trail…") {
+          const trail = get().trail;
+          if (trail) await trailRequest({ op: "revise", trail, edits, patch }, label);
+        },
+        setTrailStop(i, opts = {}) {
+          const stop = i === null ? null : get().trail?.stops[i];
+          set({ trailStop: stop ? i : null });
+          if (stop) get().select(stop.placeId, { focus: opts.focus ?? true, detail: false });
+        },
+        frameTrail: () => set({ trailStop: null, fitRequest: Date.now(), searchStartedAt: Date.now() }),
+        saveTrail() {
+          const t = get().trail;
+          if (!t) return;
+          const rest = get().savedTrails.filter((x) => x.trail.id !== t.id);
+          set({ savedTrails: [{ trail: t, savedAt: new Date().toISOString() }, ...rest].slice(0, 12) });
+        },
+        openSavedTrail(id) {
+          const t = get().savedTrails.find((x) => x.trail.id === id)?.trail;
+          if (t) showTrail(t);
+        },
+        deleteSavedTrail: (id) => set({ savedTrails: get().savedTrails.filter((x) => x.trail.id !== id) }),
+        setLowPower: (v) => set({ lowPower: v }),
         setMapMode: (m) => set({ mapMode: m }),
         setTasteLayer(on) {
           // Turning the layer on also ranks by taste, so the numbered markers lead with what's highlighted.
@@ -462,6 +556,7 @@ export const useElsewhere = create<State & Actions>()(
                 history: s.transcript,
                 session,
                 result,
+                trail: s.trail,
                 knownEntities: s.knownEntities.slice(-60),
               }),
               signal: chatAbort.signal,
@@ -523,7 +618,12 @@ export const useElsewhere = create<State & Actions>()(
         },
 
         findPlace(id) {
-          return get().result?.recommendations.find((r) => r.place.id === id)?.place ?? get().saved[id]?.place ?? null;
+          return (
+            get().result?.recommendations.find((r) => r.place.id === id)?.place ??
+            get().trail?.stops.find((s) => s.placeId === id)?.place ??
+            get().saved[id]?.place ??
+            null
+          );
         },
       };
     },
@@ -537,6 +637,9 @@ export const useElsewhere = create<State & Actions>()(
         saved: s.saved,
         mapMode: s.mapMode,
         tasteLayer: s.tasteLayer,
+        lowPower: s.lowPower,
+        trail: s.trail,
+        savedTrails: s.savedTrails,
         tasteSignals: s.tasteSignals.filter((e) => e.origin !== "conversation"),
         location: s.location?.source === "device" ? null : s.location,
       }),

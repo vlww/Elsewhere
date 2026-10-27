@@ -45,7 +45,7 @@ export function PlaceArt({ place, className = "", showCredit = false }: { place:
       />
       <div className="absolute inset-0 opacity-[0.09] mix-blend-multiply [background-image:radial-gradient(#302638_0.6px,transparent_0.6px)] [background-size:6px_6px]" />
       <Icon className="absolute left-4 bottom-3 h-7 w-7 text-aubergine/55" strokeWidth={1.4} />
-      <span className="absolute right-4 top-2 font-serif text-5xl italic leading-none text-white/70 select-none">{place.name.trim()[0]}</span>
+      <span className="absolute right-4 top-2 font-serif text-5xl leading-none text-white/70 select-none">{place.name.trim()[0]}</span>
     </div>
   );
 }

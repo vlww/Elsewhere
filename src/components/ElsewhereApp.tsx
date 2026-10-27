@@ -15,6 +15,7 @@ import { PlaceDetail } from "./places/PlaceDetail";
 import { SavedPanel } from "./places/SavedPanel";
 import { CompareSheet, CompareTray } from "./places/CompareSheet";
 import { TastePanel } from "./taste/TastePanel";
+import { TrailPanel } from "./trails/TrailPanel";
 
 // MapLibre and three.js touch `window`; load them only in the browser, after first paint.
 const MapCanvas = dynamic(() => import("./map/MapCanvas").then((m) => m.MapCanvas), {
@@ -37,7 +38,7 @@ function useIsDesktop() {
 function SidePanel({ panel }: { panel: Panel }) {
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-      {panel === "saved" ? <SavedPanel /> : panel === "taste" ? <TastePanel /> : <ResultsPanel />}
+      {panel === "saved" ? <SavedPanel /> : panel === "taste" ? <TastePanel /> : panel === "trail" ? <TrailPanel /> : <ResultsPanel />}
       <PlaceDetail />
     </div>
   );
