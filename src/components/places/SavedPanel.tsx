@@ -14,8 +14,8 @@ export function SavedPanel() {
 
   return (
     <section aria-label="Saved places" className="flex min-h-0 flex-1 flex-col">
-      <div className="px-5 pb-3 pt-4">
-        <h2 className="font-serif text-[26px] leading-none text-aubergine">Saved</h2>
+      <div className="px-5 pb-3 pt-5">
+        <h2 className="font-serif text-[28px] leading-[1.05] text-aubergine">Saved</h2>
         <p className="mt-1.5 text-[12px] text-ink-faint">The places you love the most.</p>
       </div>
       <div className="scroll-soft min-h-0 flex-1 space-y-2 overflow-y-auto px-4 pb-4">

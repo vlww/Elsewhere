@@ -8,7 +8,7 @@ import { distanceM } from "@/lib/geo";
  * per-leg distance, duration and street geometry for the chosen order.
  *
  * Transit isn't supported by OSRM; callers get walking legs and a note saying so. When routing is
- * unreachable, legs fall back to a labelled straight-line estimate with no geometry — never a fake route.
+ * unreachable, legs fall back to a labelled straight-line estimate with no geometry, never a fake route.
  */
 
 export const TRAVEL_MODES = ["walking", "cycling", "driving", "transit"] as const;

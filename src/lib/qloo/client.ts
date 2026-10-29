@@ -129,8 +129,8 @@ const TagHit = z
   .passthrough();
 export type QlooTagHit = z.infer<typeof TagHit>;
 
-/** Qloo tags ("Vintage", "Specialty Coffee", "Hiking", "Jazz") — general interests that aren't a single title or person. */
-export async function searchTags(query: string, take = 12): Promise<QlooTagHit[]> {
+/** Qloo tags ("Vintage", "Specialty Coffee", "Hiking", "Jazz"): general interests that aren't a single title or person. */
+export async function searchTags(query: string, take = 20): Promise<QlooTagHit[]> {
   const json = await get("/v2/tags", { "filter.query": query, take });
   const tags = (json as { results?: { tags?: unknown[] } })?.results?.tags;
   if (!Array.isArray(tags)) return [];

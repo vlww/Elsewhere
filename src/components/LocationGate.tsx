@@ -30,7 +30,7 @@ export function LocationSearch({ onDone, compact = false }: { onDone?: () => voi
       const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
       const json = await res.json();
       setHits(json.results ?? []);
-      if (!json.results?.length) setError(json.error ? "Location search is unavailable right now." : "Nothing found — try a neighbourhood or campus name.");
+      if (!json.results?.length) setError(json.error ? "Location search is unavailable right now." : "Nothing found. Try a neighbourhood or campus name.");
     } catch {
       setError("Location search is unavailable right now.");
     } finally {
@@ -94,7 +94,7 @@ export function LocationSearch({ onDone, compact = false }: { onDone?: () => voi
           </Button>
         )}
       </div>
-      {geoState === "denied" && <p className="px-1 text-[12.5px] text-ink-soft">Location is off for this site — no problem, search for a place instead.</p>}
+      {geoState === "denied" && <p className="px-1 text-[12.5px] text-ink-soft">Location is off for this site. No problem, search for a place instead.</p>}
       {geoState === "unavailable" && <p className="px-1 text-[12.5px] text-ink-soft">Couldn&apos;t get your location. Search for a place instead.</p>}
     </div>
   );
@@ -110,7 +110,7 @@ export function LocationGate() {
         Let&apos;s see what&apos;s <em>around.</em>
       </p>
       <p className="mt-2 text-[14px] leading-relaxed text-ink-soft">
-        Places to study, read, think, or meet a friend — chosen for what you need and, if you like, what you love. Your location is only used to search nearby; it isn&apos;t stored.
+        Places to study, read, think, or meet a friend, chosen for what you need and, if you like, what you love. Your location is only used to search nearby; it isn&apos;t stored.
       </p>
       <div className="mt-5">
         <LocationSearch />

@@ -78,7 +78,7 @@ export function findFootprints(map: maplibregl.Map, points: { placeId: string; l
       }
     }
     const pick = best ?? (nearestD < near ? nearest : null);
-    // Skip giant outlines (a whole campus) — tinting them would overstate the match.
+    // Skip giant outlines (a whole campus): tinting them would overstate the match.
     out.set(p.placeId, pick && pick.area < 2e-6 /* ≈ 25,000 m² */ ?{ ring: pick.ring, heightM: pick.heightM } : null);
   }
   return out;

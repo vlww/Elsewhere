@@ -189,7 +189,7 @@ export function MapCanvas() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         style = buildElsewhereStyle(await res.json());
       } catch {
-        if (!cancelled) setFailure("The map tiles couldn't load. Results still work — the list is on the right.");
+        if (!cancelled) setFailure("The map tiles couldn't load. Results still work, and the list is on the right.");
         return;
       }
       if (cancelled || !container.current) return;

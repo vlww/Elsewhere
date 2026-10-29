@@ -9,7 +9,7 @@ const sans = Manrope({ variable: "--font-sans", subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Elsewhere",
-  description: "Find places you'd genuinely enjoy spending time in — to study, read, think, or meet a friend.",
+  description: "Find places you'd genuinely enjoy spending time in: to study, read, think, or meet a friend.",
 };
 
 export const viewport: Viewport = {

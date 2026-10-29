@@ -20,7 +20,24 @@ export function TastePanel() {
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<CulturalEntity[]>([]);
   const [state, setState] = useState<"idle" | "loading" | "error">("idle");
+  const [own, setOwn] = useState<{ busy: boolean; error?: string }>({ busy: false });
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const typed = q.trim();
+  // Offer the words as typed unless a result already is exactly that.
+  const offerOwn = mode === "live" && typed.length >= 2 && state !== "loading" && !hits.some((e) => e.name.toLowerCase() === typed.toLowerCase());
+
+  async function addOwn() {
+    setOwn({ busy: true });
+    try {
+      const json = await (await fetch(`/api/entities?interpret=1&q=${encodeURIComponent(typed)}`)).json();
+      if (!json.entity) return setOwn({ busy: false, error: json.error ?? "Couldn't connect that to places yet." });
+      addTaste(json.entity as CulturalEntity);
+      setQ("");
+      setOwn({ busy: false });
+    } catch {
+      setOwn({ busy: false, error: "Couldn't reach the server just now." });
+    }
+  }
 
   useEffect(() => {
     if (timer.current) clearTimeout(timer.current);
@@ -40,8 +57,8 @@ export function TastePanel() {
 
   return (
     <section aria-label="Your interests" className="flex min-h-0 flex-1 flex-col">
-      <div className="px-5 pb-2 pt-4">
-        <h2 className="font-serif text-[26px] leading-none text-aubergine">
+      <div className="px-5 pb-2 pt-5">
+        <h2 className="font-serif text-[28px] leading-[1.05] text-aubergine">
           Your <em>Taste</em>
         </h2>
         <p className="mt-2 text-[13px] leading-relaxed text-ink-soft">
@@ -61,7 +78,10 @@ export function TastePanel() {
           <input
             id="taste-search"
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setOwn({ busy: false });
+            }}
             placeholder="Coffee, jazz, vintage, a film, an artist…"
             className="h-9 min-w-0 flex-1 bg-transparent text-sm text-aubergine outline-none placeholder:text-ink-faint"
           />
@@ -70,6 +90,21 @@ export function TastePanel() {
 
         {q.trim().length >= 2 && (
           <ul className="scroll-soft max-h-64 overflow-y-auto rounded-[var(--radius-md)] bg-white/80 ring-1 ring-line" aria-live="polite">
+            {offerOwn && (
+              <li className="border-b border-line/70">
+                <button onClick={() => void addOwn()} disabled={own.busy} className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-lavender/30 disabled:opacity-70">
+                  <span className="grid h-9 w-9 place-items-center rounded-[10px] bg-sunset/50 text-rose-deep">
+                    <Plus size={15} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[13.5px] font-medium text-aubergine">Add “{typed}”</span>
+                    <span className={cx("block truncate text-[11.5px]", own.error ? "text-[#8A4E2C]" : "text-ink-faint")}>
+                      {own.busy ? <span className="shimmer-text">Finding places that fit…</span> : own.error ?? "Use your own words. Elsewhere finds what fits."}
+                    </span>
+                  </span>
+                </button>
+              </li>
+            )}
             {hits.map((e) => {
               const on = signals.some((s) => s.id === e.id);
               return (
@@ -99,7 +134,7 @@ export function TastePanel() {
                 </li>
               );
             })}
-            {!hits.length && state !== "loading" && (
+            {!hits.length && !offerOwn && state !== "loading" && (
               <li className="px-3 py-3 text-[12.5px] text-ink-soft">
                 {state === "error" ? "Couldn't reach Qloo just now. Try again in a moment." : `No match for “${q}”. Try another spelling or a related name.`}
               </li>

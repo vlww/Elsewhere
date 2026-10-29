@@ -59,10 +59,10 @@ export function ResultsPanel() {
 
   return (
     <section aria-label="Recommendations" className="flex min-h-0 flex-1 flex-col">
-      <div className="space-y-3 px-4 pb-3 pt-4">
+      <div className="space-y-3 px-4 pb-3 pt-5">
         <div className="flex items-end justify-between gap-2 px-1">
           <div>
-            <h2 className="font-serif text-[26px] leading-none text-aubergine">Explore</h2>
+            <h2 className="font-serif text-[28px] leading-[1.05] text-aubergine">Explore</h2>
             <p className="mt-1.5 text-[12px] text-ink-faint">
               {searching
                 ? "Looking around…"

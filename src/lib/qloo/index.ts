@@ -28,27 +28,70 @@ export const entityTypeLabel = (t: string) => TYPE_LABEL[t] ?? t.replace("urn:en
 /** Interests that are Qloo tags (a vibe, a cuisine, an activity) rather than one title or person. */
 export const isTagInterest = (e: { id: string }) => e.id.startsWith("urn:tag:");
 
-/** Tags that describe places come first: they move the map most directly. */
+const norm = (s: string) =>
+  s
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9 ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+const singular = (w: string) => (w.length > 3 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w);
+const words = (s: string) => norm(s).split(" ").filter(Boolean).map(singular);
+
+function editDistance(a: string, b: string) {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++)
+    for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[a.length][b.length];
+}
+
+/** Whether a title or name plausibly is what was typed: every typed word starts, or nearly spells, one of its words. */
+function nameFits(name: string, query: string) {
+  const nw = words(name);
+  return words(query).every((q) =>
+    // One typo is forgiven in longer words ("murakmi"); short words must match their start exactly.
+    nw.some((w) => w.startsWith(q) || (q.length >= 6 && w.length >= q.length && editDistance(q, w.slice(0, q.length + 1)) <= 1)),
+  );
+}
+
+// Tag families that name a venue's neighbour, a job, or a single dish are too narrow or unrelated to be an interest.
+const NOISE_TAG = /:(nearby_attraction|occupation|wikidata|award|character)\b/;
+const BROAD_TAG = /:(category|cuisine|genre|ambience|decor|atmosphere|activities|amenity|good_for|dietary_option|style)\b/;
 const placeTag = (t: QlooTagHit) => (t.parents ?? []).some((p) => p.type === "urn:entity:place");
 
-function tagInterests(hits: QlooTagHit[], query: string): CulturalEntity[] {
-  const q = query.trim().toLowerCase();
-  const ranked = [...hits].sort(
-    (a, b) =>
-      Number(b.name.toLowerCase() === q) - Number(a.name.toLowerCase() === q) ||
-      Number(placeTag(b)) - Number(placeTag(a)) ||
-      (b.popularity ?? 0) - (a.popularity ?? 0),
-  );
+/**
+ * Tags that really are the interest typed: an exact name (popular enough to be a real tag, not a one-off
+ * menu line), or a broad place tag containing the words ("Vintage clothing store" for "vintage").
+ * Exact matches first, then place tags, then popularity; one per name.
+ */
+export function rankTags(hits: QlooTagHit[], query: string): QlooTagHit[] {
+  const q = words(query).join(" ");
+  const kept = hits.filter((t) => {
+    const type = t.type ?? t.id;
+    if (NOISE_TAG.test(type) || NOISE_TAG.test(t.id)) return false;
+    const pop = t.popularity ?? 0;
+    const exact = words(t.name).join(" ") === q;
+    if (exact) return pop >= (placeTag(t) ? 0.7 : 0.97);
+    const all = words(t.name);
+    return placeTag(t) && BROAD_TAG.test(type) && pop >= 0.85 && words(query).every((w) => all.includes(w));
+  });
+  const exact = (t: QlooTagHit) => Number(words(t.name).join(" ") === q);
+  const ranked = kept.sort((a, b) => exact(b) - exact(a) || Number(placeTag(b)) - Number(placeTag(a)) || (b.popularity ?? 0) - (a.popularity ?? 0));
   const seen = new Set<string>();
-  const out: CulturalEntity[] = [];
-  for (const t of ranked) {
-    const key = t.name.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({ id: t.id, name: t.name, type: t.type ?? "urn:tag", provenance: "live", origin: "picked" });
-    if (out.length === 3) break;
-  }
-  return out;
+  return ranked.filter((t) => {
+    const k = words(t.name).join(" ");
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+function tagInterests(hits: QlooTagHit[], query: string): CulturalEntity[] {
+  return rankTags(hits, query)
+    .slice(0, 3)
+    .map((t) => ({ id: t.id, name: t.name, type: t.type ?? "urn:tag", provenance: "live" as const, origin: "picked" as const }));
 }
 
 export async function resolveEntities(query: string, types?: string[]): Promise<CulturalEntity[]> {
@@ -74,9 +117,11 @@ export async function resolveEntities(query: string, types?: string[]): Promise<
     };
   });
   const general = tagInterests(tags, query);
+  // Qloo's search is generous ("boba" brings back a sculptor); keep the titles whose names fit what was typed.
+  const fitting = entities.filter((e) => nameFits(e.name, query));
   // A general word ("vintage", "jazz") means the interest itself, even when some band shares the name.
   const exact = general.length > 0 && general[0].name.toLowerCase() === query.trim().toLowerCase();
-  return exact ? [...general, ...entities] : [...entities, ...general];
+  return exact ? [...general, ...fitting] : [...fitting, ...general];
 }
 
 /**
@@ -151,7 +196,7 @@ export function qlooTagsFor(categories: PlaceCategory[]): string[] {
   return QLOO_CATEGORY_TAGS.filter(([c]) => categories.includes(c)).flatMap(([, ids]) => ids.map((id) => TAG_PREFIX + id));
 }
 
-/** Category from Qloo's category tags only — other tag types (e.g. nearby attractions) would mislead. */
+/** Category from Qloo's category tags only: other tag types (e.g. nearby attractions) would mislead. */
 function qlooCategory(p: QlooPlace): PlaceCategory | null {
   const ids = new Set(
     (p.tags ?? [])
@@ -299,7 +344,7 @@ export async function culturalEvidence(args: {
         contributions: a.contributions,
         match: "simulated",
         qlooTags: [],
-        note: "Simulated in demo mode from a hand-written fixture — not a Qloo result.",
+        note: "Simulated in demo mode from a hand-written fixture, not a Qloo result.",
       });
     }
     return { mode, status: "ok", evidence, extraPlaces: [], enriched: new Map() };
@@ -370,7 +415,7 @@ export async function culturalEvidence(args: {
       e instanceof QlooError
         ? {
             auth: "Qloo rejected the API key.",
-            "rate-limit": "Qloo's rate limit was reached — try again in a minute.",
+            "rate-limit": "Qloo's rate limit was reached. Try again in a minute.",
             timeout: "Qloo took too long to respond.",
             "bad-response": "Qloo returned something unexpected.",
             http: "Qloo request failed.",

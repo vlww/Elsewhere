@@ -176,7 +176,7 @@ export function PlaceDetail() {
           </>
         ) : (
           <p className="mt-6 rounded-[var(--radius-md)] bg-white/60 p-3 text-[13px] text-ink-soft ring-1 ring-line">
-            Saved place — run a search nearby to see how it fits right now.
+            Saved place. Run a search nearby to see how it fits right now.
           </p>
         )}
 

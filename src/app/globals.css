@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* ------------------------------------------------------------------------
-   Elsewhere design tokens — sunset pastels balanced with warm neutrals
+   Elsewhere design tokens: sunset pastels balanced with warm neutrals
    ------------------------------------------------------------------------ */
 @theme {
   --font-serif: var(--font-serif), "UnifrakturMaguntia", "Old English Text MT", Georgia, serif;

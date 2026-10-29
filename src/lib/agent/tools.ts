@@ -3,6 +3,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { geocode } from "@/lib/places/geocode";
 import { ProviderError } from "@/lib/places";
 import { entityTypeLabel, QlooError, resolveEntities, tasteMode } from "@/lib/qloo";
+import { interpretInterest } from "@/lib/qloo/interpret";
 import { CATEGORY_LABEL } from "@/lib/recommendations/activities";
 import { runSearch } from "@/lib/recommendations/pipeline";
 import { planTrail, reviseTrail, TrailEditSchema, TrailError, type TrailContext } from "@/lib/trails/plan";
@@ -95,7 +96,7 @@ const inputs = {
       .array(z.object({ place_id: z.string(), note: z.string().min(5).max(220) }))
       .max(5)
       .optional()
-      .describe("One line per stop on why it belongs and how it connects to the last — grounded in the trail's evidence."),
+      .describe("One line per stop on why it belongs and how it connects to the last, grounded in the trail's evidence."),
   }),
 } as const;
 type ToolName = keyof typeof inputs;
@@ -106,7 +107,7 @@ const DESCRIPTIONS: Record<ToolName, string> = {
   search_places:
     "Search real places around the current location and rank them. Omitted fields keep the session's current constraints; set reset=true to start from defaults. Results appear on the map and in the results panel. Returns the top candidates with ids, practical facts, cultural evidence, and both practical and taste-aware ranks.",
   find_cultural_entities:
-    "Look up taste signals by name: films, artists, authors, brands, shows, and general interests (cuisines, vibes, hobbies, music genres — returned as Qloo tags). Returns candidate entities with ids and disambiguation. The UI shows them as choices to the user.",
+    "Look up taste signals by name: films, artists, authors, brands, shows, and general interests (cuisines, vibes, hobbies, music genres, returned as Qloo tags). Returns candidate entities with ids and disambiguation. The UI shows them as choices to the user.",
   add_taste_signal:
     "Add a cultural entity (id from find_cultural_entities) to the user's active interests for this session. Use only for an obvious single match or one the user picked.",
   remove_taste_signal: "Remove an interest from the active taste signals.",
@@ -119,7 +120,7 @@ const DESCRIPTIONS: Record<ToolName, string> = {
   unsave_place: "Remove a place from the Saved list.",
   compare_places: "Open a side-by-side comparison of 2–3 places from the current results and return their differences.",
   plan_trail:
-    "Plan a Taste Trail: a routed, timed outing through 2–5 real places, drawn on the map with a full itinerary panel. Translate the request into structure — ordered stops (kinds of place), time budget, mode, price cap, max hop, mood words. Uses active interests via Qloo, the place provider, OSRM routing and listed hours. Returns the itinerary with per-stop evidence, legs, timings and assumptions. Replaces any current trail.",
+    "Plan a Taste Trail: a routed, timed outing through 2–5 real places, drawn on the map with a full itinerary panel. Translate the request into structure: ordered stops (kinds of place), time budget, mode, price cap, max hop, mood words. Uses active interests via Qloo, the place provider, OSRM routing and listed hours. Returns the itinerary with per-stop evidence, legs, timings and assumptions. Replaces any current trail.",
   revise_trail:
     "Change the current trail without rebuilding it: remove / replace / add stops, change the time at a stop, 'more like' a stop, or adjust time budget, mode, price cap, max hop, finishing near the start, or surprise. Kept stops stay put; affected legs, times and the map update together. Returns the revised itinerary and what changed.",
   set_trail_story:
@@ -337,9 +338,15 @@ export async function executeTool(name: string, rawInput: unknown, ctx: ToolCont
 
     case "find_cultural_entities": {
       try {
-        const entities = await resolveEntities(input.query as string, input.types as string[] | undefined);
+        const query = input.query as string;
+        const entities = await resolveEntities(query, input.types as string[] | undefined);
+        // Nothing named like that: offer the interest in the user's own words, translated for Qloo.
+        if (!entities.some((e) => e.name.toLowerCase() === query.trim().toLowerCase())) {
+          const own = await interpretInterest(query).catch(() => null);
+          if (own && !entities.some((e) => e.id === own.id)) entities.unshift(own);
+        }
         ctx.knownEntities.push(...entities);
-        ctx.emit({ type: "entity_choices", query: input.query as string, entities });
+        ctx.emit({ type: "entity_choices", query, entities });
         return {
           mode: tasteMode(),
           candidates: entities.map((e) => ({ id: e.id, name: e.name, kind: entityTypeLabel(e.type), about: e.disambiguation })),

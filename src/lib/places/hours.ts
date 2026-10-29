@@ -50,5 +50,5 @@ export function evaluateOpenState(place: Place, now: Date): OpenState {
       source: "Google Places",
     };
   }
-  return { status: "unknown", detail: "Hours not listed — check before going" };
+  return { status: "unknown", detail: "Hours not listed. Check before going" };
 }

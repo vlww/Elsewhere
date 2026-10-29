@@ -2,7 +2,7 @@ import type { Activity, PlaceCategory } from "@/types";
 
 /**
  * How well each place type suits each activity (0–1). These are Elsewhere's editorial
- * estimates, surfaced in the UI as such — never as verified facts about a specific place.
+ * estimates, surfaced in the UI as such, never as verified facts about a specific place.
  */
 export const ACTIVITY_FIT: Record<Activity, Partial<Record<PlaceCategory, number>>> = {
   study: { library: 1, coworking: 0.95, cafe: 0.7, tea: 0.7, community: 0.55, bookstore: 0.45, garden: 0.4, arts_centre: 0.4, park: 0.35, museum: 0.3, gallery: 0.25, plaza: 0.2, other: 0.3, music: 0.1, cinema: 0 },

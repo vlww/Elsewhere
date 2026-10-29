@@ -2,7 +2,7 @@ import type { LayerSpecification, StyleSpecification } from "@maplibre/maplibre-
 
 /**
  * Elsewhere's map style: OpenFreeMap's "Liberty" style (OpenMapTiles schema) recoloured into the
- * sunset palette. Geometry and labels are untouched — only paint, plus hiding generic POI icons
+ * sunset palette. Geometry and labels are untouched; only paint, plus hiding generic POI icons
  * so recommendation markers stay legible.
  */
 export const BASE_STYLE_URL = process.env.NEXT_PUBLIC_MAP_STYLE_URL ?? "https://tiles.openfreemap.org/styles/liberty";

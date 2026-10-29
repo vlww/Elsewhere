@@ -43,7 +43,7 @@ export async function searchInventory(q: NearbyQuery): Promise<{ places: Place[]
       const result = {
         places,
         provider: provider.label,
-        note: failures.length ? `${failures.join("; ")} — showing ${provider.label} instead.` : undefined,
+        note: failures.length ? `${failures.join("; ")}. Showing ${provider.label} instead.` : undefined,
       };
       cache.set(key, result);
       return result;

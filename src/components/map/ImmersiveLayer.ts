@@ -498,7 +498,7 @@ export class ImmersiveLayer implements CustomLayerInterface {
       spire.position.y = roofTop + rd * 1.6;
       group.add(drum, dome, spire);
     } else {
-      // A little timber water tower — the neighbourhood's rooftop vernacular.
+      // A little timber water tower, the neighbourhood's rooftop vernacular.
       const wood = track(new THREE.MeshStandardMaterial({ color: "#C9A184", roughness: 0.95 }));
       const tr = Math.min(1.8, r * 0.2);
       const off = new THREE.Vector3(((seed % 3) - 1) * r * 0.25, 0, (((seed >> 3) % 3) - 1) * r * 0.25);

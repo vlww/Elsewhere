@@ -3,7 +3,7 @@ import { fetchWithTimeout } from "@/lib/cache";
 import type { Place, PlaceCategory } from "@/types";
 import { ProviderError, type NearbyQuery, type PlaceProvider } from "./types";
 
-// Google Places API (New) — Nearby Search. https://developers.google.com/maps/documentation/places/web-service/nearby-search
+// Google Places API (New): Nearby Search. https://developers.google.com/maps/documentation/places/web-service/nearby-search
 const TYPE_GROUPS: { types: string[]; categories: PlaceCategory[] }[] = [
   { types: ["cafe", "coffee_shop", "tea_house"], categories: ["cafe", "tea"] },
   { types: ["library", "book_store"], categories: ["library", "bookstore"] },

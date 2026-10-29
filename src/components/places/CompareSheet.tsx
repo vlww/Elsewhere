@@ -69,7 +69,7 @@ export function CompareSheet() {
           : "None",
     },
     { label: tasteOn ? "Taste-aware rank" : "Practical rank", cell: (r) => `#${tasteOn ? r.tasteRank : r.practicalRank}` },
-    { label: "Trade-offs", cell: (r) => (r.tradeoffs.length ? r.tradeoffs.join("; ") : "—") },
+    { label: "Trade-offs", cell: (r) => (r.tradeoffs.length ? r.tradeoffs.join("; ") : "None") },
   ];
 
   return (

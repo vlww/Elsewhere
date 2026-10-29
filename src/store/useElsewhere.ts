@@ -462,7 +462,7 @@ export const useElsewhere = create<State & Actions>()(
               if (rec.place.priceLevel && rec.place.priceLevel > 1) {
                 patch = { maxPriceLevel: rec.place.priceLevel - 1 };
                 note = `Capped price at ${"$".repeat(rec.place.priceLevel - 1)} (only applies where prices are listed)`;
-              } else note = "Noted — its price isn't listed, so I can only drop this one";
+              } else note = "Noted. Its price isn't listed, so I can only drop this one";
               break;
             case "more-like-this":
               note = `Leaning toward more ${rec.place.category.replace("_", " ")}s like ${rec.place.name}`;
@@ -474,7 +474,7 @@ export const useElsewhere = create<State & Actions>()(
               note = `Dropped ${rec.place.name}; chains rank a little lower now`;
               break;
             case "already-been":
-              note = `Dropped ${rec.place.name} — looking for somewhere new`;
+              note = `Dropped ${rec.place.name}, looking for somewhere new`;
               break;
           }
           if (get().selectedPlaceId === rec.place.id) set({ selectedPlaceId: null, detailOpen: false });

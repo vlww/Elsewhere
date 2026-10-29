@@ -24,12 +24,12 @@ import { culturalLine, fmtClock, fmtDuration, MIN_STAY, roleLine, STAY_MIN, summ
 /**
  * Taste Trails: turn a spec (what the user asked for) into a routed, timed itinerary of real places.
  *
- *   1. candidates  — the shared recommendation pipeline (place provider + Qloo) for the slot categories
- *   2. selection   — the best-scoring set across slots, kept walkable (taste-aware score when interests exist)
- *   3. ordering    — the user's order if they gave one, else the fastest order by routed travel time,
+ *   1. candidates: the shared recommendation pipeline (place provider + Qloo) for the slot categories
+ *   2. selection: the best-scoring set across slots, kept walkable (taste-aware score when interests exist)
+ *   3. ordering: the user's order if they gave one, else the fastest order by routed travel time,
  *                    nudged so the arc ends well (a meal last, not first)
- *   4. routing     — OSRM legs with street geometry; labelled estimates if unavailable
- *   5. timing      — stay estimates, arrival times, listed hours at arrival, then fit the time budget
+ *   4. routing: OSRM legs with street geometry; labelled estimates if unavailable
+ *   5. timing: stay estimates, arrival times, listed hours at arrival, then fit the time budget
  *
  * Revisions lock the stops the user didn't touch and redo only what changed.
  */
@@ -262,7 +262,7 @@ async function candidates(spec: TrailSpec, slots: Slot[], ctx: TrailContext): Pr
 
 function openAt(r: Recommendation, at: Date, offsetMin: number): OpenState {
   if (!r.place.openingHoursRaw && r.place.openNowReported !== undefined && offsetMin > 30)
-    return { status: "unknown", detail: "Hours for that time aren't listed — check before going" };
+    return { status: "unknown", detail: "Hours for that time aren't listed. Check before going" };
   return evaluateOpenState(r.place, at);
 }
 
@@ -349,7 +349,7 @@ async function assemble(args: {
       routing = await routeLegs([start, ...recs.map((r) => r.place), ...(spec.endNearStart ? [start] : [])], spec.mode);
     }
     if (total() > spec.timeBudgetMin)
-      assumptions.push(`Even at two stops this runs about ${Math.round(total() - spec.timeBudgetMin)} min over your ${fmtDuration(spec.timeBudgetMin)} — consider fewer stops or a closer area.`);
+      assumptions.push(`Even at two stops this runs about ${Math.round(total() - spec.timeBudgetMin)} min over your ${fmtDuration(spec.timeBudgetMin)}. Consider fewer stops or a closer area.`);
   }
   legs = routing.legs;
 
@@ -390,7 +390,7 @@ async function assemble(args: {
   assumptions.push("Time at each stop is Elsewhere's estimate for that kind of place.");
   if (!spec.startTime) assumptions.push(`Starts now (${hhmm(t0)}) from ${start.name}.`);
   const unknownHours = stops.filter((s) => s.openAtArrival.status === "unknown").map((s) => s.place.name);
-  if (unknownHours.length) assumptions.push(`Hours aren't listed for ${unknownHours.join(", ")} — check before you go.`);
+  if (unknownHours.length) assumptions.push(`Hours aren't listed for ${unknownHours.join(", ")}. Check before you go.`);
   if (spec.maxPriceLevel) {
     const unpriced = stops.filter((s) => !s.place.priceLevel).map((s) => s.place.name);
     if (unpriced.length) assumptions.push(`Prices aren't listed for ${unpriced.join(", ")}, so the budget can't be confirmed there.`);

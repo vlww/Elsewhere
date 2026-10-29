@@ -2,7 +2,7 @@ import type { CulturalEntity, Place } from "@/types";
 
 /**
  * DEMO MODE ONLY. A small hand-written fixture used when QLOO_API_KEY is absent.
- * The facet weights below are Elsewhere's illustrative assumptions — not Qloo data —
+ * The facet weights below are Elsewhere's illustrative assumptions, not Qloo data,
  * and every result produced from them is labeled as simulated in the UI.
  */
 

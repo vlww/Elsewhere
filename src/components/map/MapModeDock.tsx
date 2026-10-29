@@ -88,7 +88,7 @@ function TasteLegend({ highlights, matched, compact }: { highlights: TasteHighli
   if (!signals.length) {
     body = (
       <>
-        <p>Tell Elsewhere what you love — a vibe, a cuisine, a film, an artist — and places that line up with it light up here.</p>
+        <p>Add a few things you love, and the places that fit them light up here.</p>
         <button
           onClick={() => {
             setPanel("taste");

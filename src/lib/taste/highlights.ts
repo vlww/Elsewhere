@@ -101,7 +101,7 @@ export function rankedMatches(recs: Recommendation[], signals: CulturalEntity[])
 const plural = (w: string, n: number) =>
   n === 1 ? w : w === "coworking" ? "coworking spaces" : w.endsWith("y") ? `${w.slice(0, -1)}ies` : `${w}s`;
 
-/** "2 galleries, 1 bookstore" — for change summaries. */
+/** "2 galleries, 1 bookstore", for change summaries. */
 export function categoryTally(hs: { category: PlaceCategory }[], label: (c: PlaceCategory) => string) {
   const n = new Map<PlaceCategory, number>();
   for (const h of hs) n.set(h.category, (n.get(h.category) ?? 0) + 1);

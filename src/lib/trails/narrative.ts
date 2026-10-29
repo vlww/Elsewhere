@@ -28,7 +28,7 @@ export const STAY_MIN: Record<PlaceCategory, number> = {
 };
 export const MIN_STAY = 12;
 
-/** What you can do there — phrased as typical for the kind of place. */
+/** What you can do there, phrased as typical for the kind of place. */
 export const ACTIVITY: Record<PlaceCategory, string> = {
   cafe: "grab a coffee and a seat",
   tea: "slow down with something to sip",
@@ -55,7 +55,7 @@ export function roleLine(i: number, n: number, cat: PlaceCategory) {
   const what = ACTIVITY[cat];
   if (i === 0) return `${role}: ${what} to set the tone.`;
   if (i === n - 1) return `${role} by taking time to ${what}.`;
-  return `${role} ${what} — a change of pace from the last stop.`;
+  return `${role} ${what}, a change of pace from the last stop.`;
 }
 
 /** Evidence-grounded cultural line, or undefined when there's no signal for this place. */
@@ -103,7 +103,7 @@ export function titleAndTheme(cats: PlaceCategory[], spec: TrailSpec, startAt: s
   const theme = list.length > 1 ? `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}` : list[0];
   return {
     title,
-    theme: interests.length ? `${capital(theme)} — leaning on ${interests.slice(0, 3).join(", ")}` : capital(theme),
+    theme: interests.length ? `${capital(theme)}, leaning on ${interests.slice(0, 3).join(", ")}` : capital(theme),
   };
 }
 

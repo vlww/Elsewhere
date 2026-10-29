@@ -200,8 +200,8 @@ export function ChatPanel({ className = "" }: { className?: string }) {
 
   return (
     <section aria-label="Conversation" className={cx("flex min-h-0 flex-col", className)}>
-      <div className="flex items-center justify-between px-5 pb-1 pt-4">
-        <h2 className="font-serif text-[26px] leading-none text-aubergine">Guide</h2>
+      <div className="flex items-center justify-between px-5 pb-1 pt-5">
+        <h2 className="font-serif text-[28px] leading-[1.05] text-aubergine">Guide</h2>
         {messages.length > 0 && (
           <IconButton label="New conversation" onClick={resetChat} className="h-7 w-7">
             <RotateCcw size={13} />

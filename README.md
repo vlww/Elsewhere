@@ -17,8 +17,8 @@ With no keys at all you can still explore the **demo area** (Washington Square /
 | Conversational guide | Claude (`claude-opus-5-5`) with tool use, `ANTHROPIC_API_KEY` | Guide panel says it isn't configured; map, filters, Taste Lens and saving still work |
 | Cultural intelligence | Qloo `/search` + `/v2/insights` (`QLOO_API_KEY`) | "Taste: demo": a small hand-written fixture; every signal is badged *Simulated* |
 | Place inventory | Google Places (New) → Overpass (`OVERPASS_URL`) → demo snapshot | OSM snapshot of the demo area only; searches elsewhere say why they can't run |
-| Geocoding | OSM Nominatim | — |
-| Map | MapLibre GL + OpenFreeMap vector tiles, recoloured; three.js layer in Immersive mode | — |
+| Geocoding | OSM Nominatim | |
+| Map | MapLibre GL + OpenFreeMap vector tiles, recoloured; three.js layer in Immersive mode | |
 
 All third-party keys stay on the server. Google photos go through `/api/photo` so the key never reaches the browser.
 

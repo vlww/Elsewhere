@@ -170,10 +170,10 @@ export function rank(input: RankInput) {
 
     const src = sourceLabel(p);
     const tradeoffs: string[] = [];
-    if (open.status === "unknown") tradeoffs.push("Hours aren't listed — worth checking first");
+    if (open.status === "unknown") tradeoffs.push("Hours aren't listed, worth checking first");
     if (open.status === "closed") tradeoffs.push(open.detail);
     if (open.status === "open" && c.durationMin && open.closesInMin !== undefined && open.closesInMin < c.durationMin) {
-      tradeoffs.push(`Closes in ${open.closesInMin} min — shorter than your ${c.durationMin}-min plan`);
+      tradeoffs.push(`Closes in ${open.closesInMin} min, shorter than your ${c.durationMin}-min plan`);
     }
     if ((c.activity === "study" || c.activity === "work" || c.requireWifi) && p.wifi === "unknown") tradeoffs.push("Wi-Fi isn't listed");
     if (c.maxPriceLevel && !p.priceLevel) tradeoffs.push("Price isn't listed");

@@ -60,7 +60,7 @@ export function MapControls() {
           <LocateFixed size={16} />
         </IconButton>
         <IconButton
-          label={lowPower ? "Effects reduced — turn full effects back on" : "Reduce effects (lighter 3D, no ambient animation)"}
+          label={lowPower ? "Effects reduced. Turn full effects back on" : "Reduce effects (lighter 3D, no ambient animation)"}
           aria-pressed={lowPower}
           onClick={() => setLowPower(!lowPower)}
           className={lowPower ? "bg-aubergine/10 text-rose-deep" : undefined}

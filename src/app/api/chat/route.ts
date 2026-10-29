@@ -41,7 +41,7 @@ export async function POST(req: Request) {
           signal: req.signal,
         });
       } catch (e) {
-        let msg = "The guide hit a problem. Your search and map are still here — try again.";
+        let msg = "The guide hit a problem. Your search and map are still here. Try again.";
         let recoverable = true;
         const noCredentials =
           !(e instanceof Anthropic.APIError) && !process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN;

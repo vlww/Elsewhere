@@ -76,13 +76,14 @@ export function TrailPanel() {
 function EmptyTrail() {
   const location = useElsewhere((s) => s.location);
   const agentReady = useElsewhere((s) => s.status?.agent.configured ?? false);
-  const signals = useElsewhere((s) => s.tasteSignals);
   const savedTrails = useElsewhere((s) => s.savedTrails);
-  const { planTrail, sendMessage, setMobileTab, openSavedTrail, deleteSavedTrail } = useElsewhere.getState();
+  const { planTrail, setMobileTab, openSavedTrail, deleteSavedTrail } = useElsewhere.getState();
   const [budget, setBudget] = useState<"any" | "60" | "120" | "180">("any");
   return (
     <div className="scroll-soft min-h-0 flex-1 overflow-y-auto px-5 pb-8 pt-5">
-      <h2 className="font-serif text-[28px] leading-[1.05] text-aubergine">Taste Trails</h2>
+      <h2 className="font-serif text-[28px] leading-[1.05] text-aubergine">
+        <em>Taste</em> Trails
+      </h2>
       <p className="mt-2 text-[13.5px] leading-relaxed text-ink-soft">
         A few places, one outing. Build a short route around a mood, interest, or free afternoon.
       </p>
@@ -90,7 +91,8 @@ function EmptyTrail() {
         <button
           onClick={() => {
             setMobileTab("guide");
-            void sendMessage(signals.length ? "Plan an afternoon around my interests." : "Plan me a relaxed afternoon nearby.");
+            // On mobile the guide sheet mounts after the tab switch, so focus on the next frame.
+            requestAnimationFrame(() => document.getElementById("composer")?.focus());
           }}
           className="mt-5 flex w-full items-center gap-3 rounded-[var(--radius-lg)] bg-aubergine px-4 py-3.5 text-left text-ivory shadow-[var(--shadow-lift)] transition-transform hover:-translate-y-0.5"
         >
@@ -278,7 +280,7 @@ function Itinerary({ trail }: { trail: TasteTrail }) {
           )}
           <p className="mt-3 px-1 text-[10.5px] leading-snug text-ink-faint">
             Routes: {trail.routing.provider}
-            {trail.routing.live ? "" : " (unavailable — estimates shown)"}. Places: listed by their providers. Cultural fit:{" "}
+            {trail.routing.live ? "" : " (unavailable, estimates shown)"}. Places: listed by their providers. Cultural fit:{" "}
             {trail.cultural.mode === "live" ? "Qloo Insights" : trail.cultural.mode === "demo" ? "simulated (demo mode)" : "not used"}. The order, timings and
             stays are Elsewhere&apos;s plan{trail.story ? "; the trail's title and notes were written by the guide from this evidence" : ""}.
           </p>
@@ -414,12 +416,12 @@ function StopCard({ trail, stop, i, active, onSelect }: { trail: TasteTrail; sto
             </p>
           )}
           {!stop.culturalRationale && trail.cultural.mode !== "off" && (
-            <p className="text-[11.5px] text-ink-faint">No cultural signal for this place — it&apos;s here for practical fit.</p>
+            <p className="text-[11.5px] text-ink-faint">No cultural signal for this place. It&apos;s here for practical fit.</p>
           )}
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[12px]">
             <dt className="text-ink-faint">Hours</dt>
             <dd className={cx(stop.openAtArrival.status === "closed" ? "text-[#8A4E2C]" : stop.openAtArrival.status === "unknown" ? "text-ink-soft" : "text-plum")}>
-              {stop.openAtArrival.status === "unknown" ? "Not listed — check before going" : `At ${clock(stop.arriveAt)}: ${stop.openAtArrival.detail}`}
+              {stop.openAtArrival.status === "unknown" ? "Not listed. Check before going" : `At ${clock(stop.arriveAt)}: ${stop.openAtArrival.detail}`}
             </dd>
             <dt className="text-ink-faint">Price</dt>
             <dd className="text-plum">{p.priceLevel ? "$".repeat(p.priceLevel) + " listed" : "Not listed"}</dd>
