@@ -9,7 +9,7 @@ import { executeTool, TOOL_STATUS, TOOLS, type ToolContext } from "./tools";
 export const AGENT_MODEL = process.env.ELSEWHERE_MODEL ?? "claude-opus-5-5";
 const SUPPORTS_FALLBACK = !AGENT_MODEL.startsWith("claude-haiku");
 const AGENT_EFFORT = (process.env.ELSEWHERE_EFFORT ?? "medium") as "low" | "medium" | "high";
-const MAX_TOOL_ROUNDS = 8;
+const MAX_TOOL_ROUNDS = 6;
 
 type Msg = Anthropic.Beta.BetaMessageParam;
 
@@ -76,8 +76,11 @@ export async function runAgent(args: {
     const stream = client.beta.messages.stream(
       {
         model: AGENT_MODEL,
-        max_tokens: 32000,
+        // Replies are a few short paragraphs; this caps a runaway turn without truncating normal ones.
+        max_tokens: 8000,
         system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+        // Also cache the conversation so far: each tool round and follow-up resends it.
+        cache_control: { type: "ephemeral" },
         tools: TOOLS,
         // Last round: answer from what we have instead of calling more tools.
         ...(round === MAX_TOOL_ROUNDS && { tool_choice: { type: "none" as const } }),
