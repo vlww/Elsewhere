@@ -41,15 +41,17 @@ export interface RankInput {
   constraints: SearchConstraints;
   feedback: FeedbackEntry[];
   now: Date;
+  /** Places asked for by name (a text search for "record store"); worth a walk past the usual radius. */
+  farOk?: Set<string>;
 }
 
 function isOutdoor(p: Place) {
   return OUTDOOR_CATEGORIES.includes(p.category) || p.outdoorSeating === "yes";
 }
 
-function hardFilter(p: Place, d: number, open: OpenState, c: SearchConstraints, excluded: Set<string>): string | null {
+function hardFilter(p: Place, d: number, open: OpenState, c: SearchConstraints, excluded: Set<string>, farOk?: Set<string>): string | null {
   if (excluded.has(p.id)) return "Dismissed earlier";
-  if (d > c.radiusM) return `Outside ${formatDistance(c.radiusM)} range`;
+  if (d > c.radiusM && !farOk?.has(p.id)) return `Outside ${formatDistance(c.radiusM)} range`;
   if (c.includeCategories.length && !c.includeCategories.includes(p.category)) return "Different kind of place than requested";
   if (c.excludeCategories.includes(p.category)) return `${CATEGORY_LABEL[p.category]}s excluded`;
   if (activityFit(c.activity, p.category) < 0.1 && !c.includeCategories.includes(p.category)) return `Not suited to ${ACTIVITY_VERB[c.activity]}`;
@@ -129,7 +131,7 @@ export function rank(input: RankInput) {
   for (const cand of input.candidates) {
     const d = distanceM(location, cand.place);
     const open = evaluateOpenState(cand.place, now);
-    const reason = hardFilter(cand.place, d, open, c, excluded);
+    const reason = hardFilter(cand.place, d, open, c, excluded, input.farOk);
     if (reason) filteredOut.push({ placeId: cand.place.id, name: cand.place.name, reason });
     else kept.push({ ...cand, d, open });
   }

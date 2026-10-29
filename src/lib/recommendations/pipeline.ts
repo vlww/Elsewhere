@@ -56,8 +56,10 @@ export async function runSearch(input: SearchInput): Promise<SearchResult> {
   input.onStatus?.("Finding places that fit…");
   const places = inventory.places.map((p) => taste.enriched.get(p.id) ?? p);
   const candidates = dedupe([...places, ...taste.extraPlaces, ...(input.extraPlaces ?? [])]).map((place) => ({ place, cultural: taste.evidence.get(place.id) }));
+
   const keep = new Set((input.extraPlaces ?? []).map((p) => p.id));
   const { recommendations, filteredOut } = rank({
+    farOk: keep,
     candidates,
     location,
     constraints,

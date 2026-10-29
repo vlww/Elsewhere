@@ -306,15 +306,17 @@ function mentions(p: Place, variants: string[]) {
  */
 async function candidates(spec: TrailSpec, slots: Slot[], ctx: TrailContext): Promise<SearchResult> {
   const radius = radiusFor(spec);
+  // Something asked for by name is worth a longer walk than a generic stop.
+  const reach = Math.round(radius * 2.2);
   const named = slots.filter((s) => s.query && !s.locked);
   const found = await Promise.all(
     named.map(async (slot) => {
       const lists = await Promise.all(
         variantsOf(slot.query!).map((text) =>
-          searchByText({ text, lat: ctx.location.lat, lon: ctx.location.lon, radiusM: radius, fallbackCategory: slot.cats[0] }),
+          searchByText({ text, lat: ctx.location.lat, lon: ctx.location.lon, radiusM: reach, fallbackCategory: slot.cats[0] }),
         ),
       );
-      return lists.flat().filter((p) => distanceM(ctx.location, p) <= radius * 1.6);
+      return lists.flat().filter((p) => distanceM(ctx.location, p) <= reach);
     }),
   );
   const extra = found.flat();
