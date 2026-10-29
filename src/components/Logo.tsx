@@ -9,23 +9,23 @@ const SUNSET = ["#F97316", "#F0563A", "#E0457B", "#8B2F8F", "#3F1C5C"];
  */
 function SunsetMark({ size = 30 }: { size?: number }) {
   const id = useId().replace(/:/g, "");
-  const stroke = { stroke: `url(#${id}-sun)`, strokeWidth: 2.9, strokeLinecap: "round" as const, fill: "none" };
+  const stroke = { stroke: `url(#${id}-sun)`, strokeWidth: 2.6, strokeLinecap: "round" as const, fill: "none" };
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden className="shrink-0">
       <defs>
-        <linearGradient id={`${id}-sun`} gradientUnits="userSpaceOnUse" x1="0" y1="3" x2="0" y2="29">
+        <linearGradient id={`${id}-sun`} gradientUnits="userSpaceOnUse" x1="0" y1="3" x2="0" y2="28">
           <stop offset="0" stopColor="#FFC94D" />
-          <stop offset="0.38" stopColor={SUNSET[0]} />
-          <stop offset="0.7" stopColor={SUNSET[2]} />
+          <stop offset="0.4" stopColor={SUNSET[0]} />
+          <stop offset="0.72" stopColor={SUNSET[2]} />
           <stop offset="1" stopColor={SUNSET[3]} />
         </linearGradient>
       </defs>
-      {/* Circle: centre (16, 15.5), radius 13. */}
+      {/* One circle: centre (16, 15.5), radius 13. The stripes run on a circle of radius 11.7 so their round ends stay inside it. */}
       <path d="M3 15.5 A13 13 0 0 1 29 15.5 Z" fill={`url(#${id}-sun)`} />
-      <path d="M3.6 19.6 L28.3 19.6" {...stroke} />
-      <path d="M5.8 23.6 L19.5 23.6" {...stroke} />
-      <path d="M10.6 27.6 L25 27.6" {...stroke} />
-      <path d="M3.6 19.6 A13 13 0 0 0 10.6 27.6" {...stroke} />
+      <path d="M4.62 18.2 L27.38 18.2" {...stroke} />
+      <path d="M6.37 22.15 L16.6 22.15" {...stroke} />
+      <path d="M11.05 26.1 L20.95 26.1" {...stroke} />
+      <path d="M4.62 18.2 A11.7 11.7 0 0 0 11.05 26.1" {...stroke} />
     </svg>
   );
 }
