@@ -42,8 +42,8 @@ export function Logo() {
           WebkitBackgroundClip: "text",
           backgroundClip: "text",
           WebkitTextFillColor: "transparent",
-          // Pirata One has one weight; a stroke that takes the clipped gradient makes it bold.
-          WebkitTextStroke: "1.3px transparent",
+          // Pirata One has one weight; a thin stroke that takes the clipped gradient adds a touch of weight.
+          WebkitTextStroke: "0.5px transparent",
           filter: "drop-shadow(0 1px 0.5px rgb(63 28 92 / 0.18))",
         }}
       >
