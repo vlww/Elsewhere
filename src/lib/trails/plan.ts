@@ -2,6 +2,9 @@ import { z } from "zod";
 import { distanceM } from "@/lib/geo";
 import { evaluateOpenState, wallClockDate } from "@/lib/places/hours";
 import { runSearch } from "@/lib/recommendations/pipeline";
+import { searchByText } from "@/lib/places";
+import { namesMatch } from "@/lib/qloo";
+import { synonymsFor } from "@/lib/qloo/interpret";
 import { CATEGORY_LABEL } from "@/lib/recommendations/activities";
 import { durationMatrix, routeLegs } from "@/lib/routing";
 import {
@@ -11,6 +14,7 @@ import {
   type CulturalEntity,
   type FeedbackEntry,
   type OpenState,
+  type Place,
   type Recommendation,
   type SearchResult,
   type TasteTrail,
@@ -52,10 +56,17 @@ export const TrailEditSchema = z.discriminatedUnion("op", [
     op: z.literal("replace"),
     stop: z.number().int().min(1),
     categories: z.array(PlaceCategory).min(1).optional(),
+    /** Something specific to find instead ("boba", "a ramen place"). */
+    query: z.string().max(60).optional(),
     /** Why it's being replaced; steers the pick. */
     because: z.enum(["not-my-vibe", "too-expensive", "less-touristy", "outdoors", "different"]).optional(),
   }),
-  z.object({ op: z.literal("add"), categories: z.array(PlaceCategory).min(1), position: z.number().int().min(1).optional() }),
+  z.object({
+    op: z.literal("add"),
+    categories: z.array(PlaceCategory).min(1),
+    query: z.string().max(60).optional(),
+    position: z.number().int().min(1).optional(),
+  }),
   z.object({ op: z.literal("stay"), stop: z.number().int().min(1), minutes: z.number().min(5).max(300) }),
   z.object({ op: z.literal("more-like"), stop: z.number().int().min(1) }),
 ]);
@@ -101,9 +112,40 @@ export function defaultSlots(spec: TrailSpec): PlaceCategory[][] {
 const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 const addMin = (d: Date, m: number) => new Date(d.getTime() + m * 60000);
 
+/** Parts of the day people plan around, as [first hour, last hour) and the start Elsewhere assumes. */
+const DAYPARTS: { name: string; words: RegExp; from: number; to: number; start: [number, number] }[] = [
+  { name: "morning", words: /\b(morning|brunch|breakfast)/, from: 6, to: 12, start: [9, 30] },
+  { name: "afternoon", words: /\b(afternoon|lunch)/, from: 12, to: 17, start: [13, 0] },
+  { name: "evening", words: /\b(evening|dinner|sunset)/, from: 17, to: 22, start: [18, 0] },
+];
+const NIGHT_WORDS = /\b(night|tonight|late|midnight|after dark|nightlife|insomnia|can't sleep|\d+ ?am)\b/;
+
+/**
+ * When to start if the user didn't give a time. Now, unless the words name another part of the day
+ * ("an afternoon of…" at 9 PM means tomorrow afternoon), or it's the middle of the night and nothing
+ * says they mean tonight: then the plan is for later in the day.
+ */
+function impliedStart(now: Date, spec: TrailSpec): { at: Date; why?: string } {
+  const words = spec.mood.join(" ").toLowerCase();
+  const at = (h: number, m: number) => {
+    const d = new Date(now);
+    d.setHours(h, m, 0, 0);
+    if (d.getTime() < now.getTime() - 30 * 60000) d.setDate(d.getDate() + 1);
+    return d;
+  };
+  const hour = now.getHours();
+  const part = DAYPARTS.find((p) => p.words.test(words));
+  if (part) {
+    if (hour >= part.from && hour < part.to) return { at: now };
+    return { at: at(...part.start), why: `planned for the ${part.name}` };
+  }
+  if (hour < 6 && !NIGHT_WORDS.test(words)) return { at: at(10, 0), why: "it's the middle of the night, so this is planned for later today" };
+  return { at: now };
+}
+
 function startDate(ctx: TrailContext, spec: TrailSpec) {
   const now = wallClockDate(ctx.clientNow);
-  if (!spec.startTime) return now;
+  if (!spec.startTime) return impliedStart(now, spec).at;
   const [h, m] = spec.startTime.split(":").map(Number);
   const d = new Date(now);
   d.setHours(h, m, 0, 0);
@@ -138,10 +180,15 @@ interface Slot {
   /** Prefer places sharing cultural signal with this one ("more like this"). */
   likeOf?: Recommendation;
   stay?: number;
+  /** What the user literally asked for here ("boba"); when places match it, only they can fill the slot. */
+  query?: string;
+  matchIds?: Set<string>;
 }
 
 function slotScore(r: Recommendation, slot: Slot, useTaste: boolean, rank: number, jitter: number) {
-  let s = useTaste ? r.tasteScore.total : r.practicalScore.total;
+  // A stop the user named ("boba") is about doing that well; taste only breaks ties between real matches.
+  const named = !!slot.matchIds?.size;
+  let s = named ? r.practicalScore.total + (useTaste ? 0.08 * r.tasteScore.cultural : 0) : useTaste ? r.tasteScore.total : r.practicalScore.total;
   if (slot.surprise) {
     // Past the obvious: lift places with cultural signal that aren't the slot's top picks, lower chains.
     if (rank < 2) s -= 0.12;
@@ -160,9 +207,11 @@ function slotScore(r: Recommendation, slot: Slot, useTaste: boolean, rank: numbe
 }
 
 function eligible(r: Recommendation, slot: Slot, spec: TrailSpec) {
-  if (!slot.cats.includes(r.place.category)) return false;
+  if (slot.matchIds?.size ? !slot.matchIds.has(r.place.id) : !slot.cats.includes(r.place.category)) return false;
   if (slot.avoid.has(r.place.id) || spec.excludePlaceIds.includes(r.place.id)) return false;
   if (spec.excludeCategories.includes(r.place.category)) return false;
+  // Dog runs and playgrounds are parks on paper, not places to linger, unless that's what was asked for.
+  if (/dog_park|playground/.test(r.place.subcategory ?? "") && !/\b(dog|kid|child|play)/.test(spec.mood.join(" ").toLowerCase())) return false;
   const cap = slot.maxPrice ?? spec.maxPriceLevel;
   if (cap && r.place.priceLevel && r.place.priceLevel > cap) return false;
   return true;
@@ -242,9 +291,36 @@ async function bestOrder(start: { lat: number; lon: number }, recs: Recommendati
 
 // --- Assembly ------------------------------------------------------------------------
 
+/** Words a named stop could be listed under: what was said plus known other names. */
+const variantsOf = (q: string) => [q, ...synonymsFor(q)];
+
+function mentions(p: Place, variants: string[]) {
+  const text = [p.name, p.subcategory, p.description].filter(Boolean).join(" ").toLowerCase().replace(/_/g, " ");
+  return variants.some((v) => new RegExp(`\\b${v.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`).test(text));
+}
+
+/**
+ * Candidates for every slot. Named stops ("boba") are searched by text first, so a real match is in the
+ * pool even when it wouldn't rank near the top on taste or category alone; each such slot then accepts
+ * only places that match.
+ */
 async function candidates(spec: TrailSpec, slots: Slot[], ctx: TrailContext): Promise<SearchResult> {
-  const cats = [...new Set(slots.flatMap((s) => s.cats))].filter((c) => !spec.excludeCategories.includes(c));
-  return runSearch({
+  const radius = radiusFor(spec);
+  const named = slots.filter((s) => s.query && !s.locked);
+  const found = await Promise.all(
+    named.map(async (slot) => {
+      const lists = await Promise.all(
+        variantsOf(slot.query!).map((text) =>
+          searchByText({ text, lat: ctx.location.lat, lon: ctx.location.lon, radiusM: radius, fallbackCategory: slot.cats[0] }),
+        ),
+      );
+      return lists.flat().filter((p) => distanceM(ctx.location, p) <= radius * 1.6);
+    }),
+  );
+  const extra = found.flat();
+  const cats = [...new Set([...slots.flatMap((s) => s.cats), ...extra.map((p) => p.category)])].filter((c) => !spec.excludeCategories.includes(c));
+  const result = await runSearch({
+    extraPlaces: extra,
     location: ctx.location,
     constraints: SearchConstraintsSchema.parse({
       activity: "explore",
@@ -258,6 +334,16 @@ async function candidates(spec: TrailSpec, slots: Slot[], ctx: TrailContext): Pr
     clientNow: ctx.clientNow,
     onStatus: ctx.onStatus,
   });
+  named.forEach((slot, k) => {
+    const variants = variantsOf(slot.query!);
+    const hits = found[k];
+    slot.matchIds = new Set(
+      result.recommendations
+        .filter((r) => hits.some((h) => h.id === r.place.id || (distanceM(h, r.place) < 80 && namesMatch(h.name, r.place.name))) || mentions(r.place, variants))
+        .map((r) => r.place.id),
+    );
+  });
+  return result;
 }
 
 function openAt(r: Recommendation, at: Date, offsetMin: number): OpenState {
@@ -388,13 +474,19 @@ async function assemble(args: {
 
   // Honest notes about what's estimated or missing.
   assumptions.push("Time at each stop is Elsewhere's estimate for that kind of place.");
-  if (!spec.startTime) assumptions.push(`Starts now (${hhmm(t0)}) from ${start.name}.`);
+  if (!spec.startTime) {
+    const why = impliedStart(wallClockDate(ctx.clientNow), spec).why;
+    assumptions.push(why ? `Starts at ${fmtClock(hhmm(t0))} from ${start.name}; ${why}.` : `Starts now (${hhmm(t0)}) from ${start.name}.`);
+  }
   const unknownHours = stops.filter((s) => s.openAtArrival.status === "unknown").map((s) => s.place.name);
-  if (unknownHours.length) assumptions.push(`Hours aren't listed for ${unknownHours.join(", ")}. Check before you go.`);
+  if (unknownHours.length) assumptions.push(`Hours aren't listed for ${unknownHours.join(", ").replace(/\.$/, "")}. Check before you go.`);
   if (spec.maxPriceLevel) {
     const unpriced = stops.filter((s) => !s.place.priceLevel).map((s) => s.place.name);
     if (unpriced.length) assumptions.push(`Prices aren't listed for ${unpriced.join(", ")}, so the budget can't be confirmed there.`);
   }
+  for (const slot of args.slots)
+    if (slot.query && slot.matchIds && !slot.matchIds.size)
+      assumptions.push(`Couldn't find anywhere listed for ${slot.query} nearby, so that stop is a ${slot.cats.map((c) => CATEGORY_LABEL[c].toLowerCase()).join(" or ")} instead.`);
   for (const slot of args.unfilled)
     assumptions.push(`Couldn't find a ${slot.cats.map((c) => CATEGORY_LABEL[c].toLowerCase()).join(" or ")} that fits; the trail goes without it.`);
   if (args.useTaste && ctx.tasteSignals.length) {
@@ -449,7 +541,8 @@ function stayFor(r: Recommendation, slot: Slot | undefined, spec: TrailSpec) {
 export async function planTrail(rawSpec: Partial<TrailSpec>, ctx: TrailContext): Promise<TasteTrail> {
   const spec = TrailSpecSchema.parse(rawSpec);
   const slotCats = spec.slots ?? defaultSlots(spec);
-  const slotsList: Slot[] = slotCats.map((cats) => ({
+  const slotsList: Slot[] = slotCats.map((cats, i) => ({
+    query: spec.slots ? spec.slotQueries?.[i]?.trim() || undefined : undefined,
     cats: cats.filter((c) => !spec.excludeCategories.includes(c)),
     avoid: new Set(),
     surprise: spec.surprise,
@@ -495,7 +588,13 @@ export async function reviseTrail(trail: TasteTrail, edits: TrailEdit[], patch: 
   // Every current stop starts locked; edits unlock or remove only what they touch.
   type Entry = { slot: Slot; removed?: boolean };
   const entries: Entry[] = trail.stops.map((s) => ({
-    slot: { cats: trail.spec.slots?.[s.slot] ?? [s.place.category], locked: s.rec, avoid: new Set([s.placeId]), surprise: spec.surprise },
+    slot: {
+      cats: trail.spec.slots?.[s.slot] ?? [s.place.category],
+      query: trail.spec.slotQueries?.[s.slot] ?? undefined,
+      locked: s.rec,
+      avoid: new Set([s.placeId]),
+      surprise: spec.surprise,
+    },
   }));
   let reorder = patch.endNearStart !== undefined && patch.endNearStart !== trail.spec.endNearStart;
   const at = (n: number) => {
@@ -514,7 +613,12 @@ export async function reviseTrail(trail: TasteTrail, edits: TrailEdit[], patch: 
         const e = at(ed.stop);
         const old = e.slot.locked!;
         e.slot.locked = undefined;
-        if (ed.categories) e.slot.cats = ed.categories;
+        // New kinds of place mean the old named request no longer applies.
+        if (ed.categories) {
+          e.slot.cats = ed.categories;
+          e.slot.query = undefined;
+        }
+        if (ed.query) e.slot.query = ed.query;
         if (ed.because === "outdoors") {
           e.slot.cats = ed.categories ?? ["park", "garden", "plaza"];
           e.slot.outdoor = true;
@@ -526,7 +630,7 @@ export async function reviseTrail(trail: TasteTrail, edits: TrailEdit[], patch: 
         break;
       }
       case "add":
-        entries.splice(Math.min(entries.length, (ed.position ?? entries.length + 1) - 1), 0, { slot: { cats: ed.categories, avoid: new Set(), surprise: spec.surprise } });
+        entries.splice(Math.min(entries.length, (ed.position ?? entries.length + 1) - 1), 0, { slot: { cats: ed.categories, query: ed.query, avoid: new Set(), surprise: spec.surprise } });
         reorder = !ed.position;
         break;
       case "stay":
@@ -572,6 +676,7 @@ export async function reviseTrail(trail: TasteTrail, edits: TrailEdit[], patch: 
   const live = entries.filter((e) => !e.removed);
   if (live.length < 2 && !live.some((e) => !e.slot.locked)) throw new TrailError("A trail needs at least two stops.");
   spec.slots = live.map((e) => e.slot.cats);
+  spec.slotQueries = live.map((e) => e.slot.query ?? null);
 
   ctx.onStatus?.("Reworking the trail…");
   const needsSearch = live.some((e) => !e.slot.locked);

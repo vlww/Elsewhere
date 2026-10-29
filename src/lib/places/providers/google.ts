@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { fetchWithTimeout } from "@/lib/cache";
 import type { Place, PlaceCategory } from "@/types";
-import { ProviderError, type NearbyQuery, type PlaceProvider } from "./types";
+import { ProviderError, type NearbyQuery, type PlaceProvider, type TextQuery } from "./types";
 
 // Google Places API (New): Nearby Search. https://developers.google.com/maps/documentation/places/web-service/nearby-search
 const TYPE_GROUPS: { types: string[]; categories: PlaceCategory[] }[] = [
@@ -90,6 +90,38 @@ const FIELDS = [
   "places.editorialSummary", "places.regularOpeningHours", "places.currentOpeningHours.openNow", "places.photos",
 ].join(",");
 
+function toPlace(p: z.infer<typeof GPlace>, category: PlaceCategory, fetchedAt: string): Place {
+  const photo = p.photos?.[0];
+  return {
+    id: `google:${p.id}`,
+    providerId: p.id,
+    source: "google",
+    name: p.displayName?.text ?? "Unnamed place",
+    lat: p.location.latitude,
+    lon: p.location.longitude,
+    category,
+    subcategory: p.primaryType,
+    address: p.shortFormattedAddress ?? p.formattedAddress,
+    url: p.websiteUri,
+    providerUrl: p.googleMapsUri,
+    openingHoursRaw: periodsToOsm(p.regularOpeningHours),
+    openingHoursText: p.regularOpeningHours?.weekdayDescriptions,
+    openNowReported: p.currentOpeningHours?.openNow,
+    priceLevel: p.priceLevel ? PRICE[p.priceLevel] : undefined,
+    rating: p.rating,
+    ratingCount: p.userRatingCount,
+    wifi: "unknown",
+    outdoorSeating: p.outdoorSeating === undefined ? "unknown" : p.outdoorSeating ? "yes" : "no",
+    wheelchair: "unknown",
+    description: p.editorialSummary?.text,
+    // Served through /api/photo so the API key never reaches the browser.
+    imageUrl: photo ? `/api/photo?name=${encodeURIComponent(photo.name)}` : undefined,
+    imageCredit: photo?.authorAttributions?.[0]?.displayName ? `Photo: ${photo.authorAttributions[0].displayName} via Google` : undefined,
+    tags: p.priceLevel === "PRICE_LEVEL_FREE" ? ["free"] : [],
+    fetchedAt,
+  };
+}
+
 export const googleProvider: PlaceProvider = {
   id: "google",
   label: "Google Places",
@@ -130,37 +162,32 @@ export const googleProvider: PlaceProvider = {
         const p = parsed.data;
         const category = categoryFor(p);
         if (!category || out.has(p.id)) continue;
-        const photo = p.photos?.[0];
-        out.set(p.id, {
-          id: `google:${p.id}`,
-          providerId: p.id,
-          source: "google",
-          name: p.displayName?.text ?? "Unnamed place",
-          lat: p.location.latitude,
-          lon: p.location.longitude,
-          category,
-          subcategory: p.primaryType,
-          address: p.shortFormattedAddress ?? p.formattedAddress,
-          url: p.websiteUri,
-          providerUrl: p.googleMapsUri,
-          openingHoursRaw: periodsToOsm(p.regularOpeningHours),
-          openingHoursText: p.regularOpeningHours?.weekdayDescriptions,
-          openNowReported: p.currentOpeningHours?.openNow,
-          priceLevel: p.priceLevel ? PRICE[p.priceLevel] : undefined,
-          rating: p.rating,
-          ratingCount: p.userRatingCount,
-          wifi: "unknown",
-          outdoorSeating: p.outdoorSeating === undefined ? "unknown" : p.outdoorSeating ? "yes" : "no",
-          wheelchair: "unknown",
-          description: p.editorialSummary?.text,
-          // Served through /api/photo so the API key never reaches the browser.
-          imageUrl: photo ? `/api/photo?name=${encodeURIComponent(photo.name)}` : undefined,
-          imageCredit: photo?.authorAttributions?.[0]?.displayName ? `Photo: ${photo.authorAttributions[0].displayName} via Google` : undefined,
-          tags: p.priceLevel === "PRICE_LEVEL_FREE" ? ["free"] : [],
-          fetchedAt,
-        });
+        out.set(p.id, toPlace(p, category, fetchedAt));
       }
     }
     return [...out.values()];
+  },
+  /** Places matching words ("boba", "ramen") near a point, for requests more specific than a category. */
+  async searchText(q: TextQuery) {
+    const key = process.env.GOOGLE_PLACES_API_KEY;
+    if (!key) return [];
+    const res = await fetchWithTimeout("https://places.googleapis.com/v1/places:searchText", {
+      method: "POST",
+      timeoutMs: 10000,
+      headers: { "Content-Type": "application/json", "X-Goog-Api-Key": key, "X-Goog-FieldMask": FIELDS },
+      body: JSON.stringify({
+        textQuery: q.text,
+        maxResultCount: 12,
+        locationBias: { circle: { center: { latitude: q.lat, longitude: q.lon }, radius: Math.min(q.radiusM, 50000) } },
+      }),
+    });
+    if (!res.ok) throw new ProviderError(`google text ${res.status}`, "Google Places search failed.", "unavailable");
+    const fetchedAt = new Date().toISOString();
+    return (z.object({ places: z.array(z.unknown()).optional() }).parse(await res.json()).places ?? []).flatMap((raw) => {
+      const parsed = GPlace.safeParse(raw);
+      if (!parsed.success) return [];
+      // A boba shop may carry no type Elsewhere knows; it still answers the request, filed under the stop's kind.
+      return [toPlace(parsed.data, categoryFor(parsed.data) ?? q.fallbackCategory, fetchedAt)];
+    });
   },
 };

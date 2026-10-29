@@ -60,6 +60,13 @@ const inputs = {
       .max(5)
       .optional()
       .describe("Ordered stops; each lists the kinds of place that would do for it. Omit to let Elsewhere choose an arc from the mood."),
+    stop_queries: z
+      .array(z.string().max(60).nullable())
+      .max(5)
+      .optional()
+      .describe(
+        "Aligned with stops: what the user literally asked for at a stop when it's more specific than a kind of place ('boba', 'ramen', 'matcha', 'vinyl'), else null. Elsewhere searches for places that actually match it and fills that stop only with them.",
+      ),
     stop_count: z.number().int().min(2).max(5).optional(),
     keep_order: z.boolean().optional().describe("True when the user listed stops in a sequence they want kept."),
     mode: z.enum(TRAIL_MODES).optional(),
@@ -402,6 +409,7 @@ export async function executeTool(name: string, rawInput: unknown, ctx: ToolCont
         const trail = await planTrail(
           {
             slots: input.stops as never,
+            slotQueries: input.stop_queries as (string | null)[] | undefined,
             stops: (input.stop_count as number | undefined) ?? ((input.stops as unknown[] | undefined)?.length || undefined),
             keepOrder: (input.keep_order as boolean) ?? false,
             mode: input.mode as never,

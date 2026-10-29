@@ -33,6 +33,11 @@ const SYNONYMS: Record<string, string[]> = {
   climbing: ["climbing gym"],
 };
 
+/** Other names a place might go by for these words ("boba" → "bubble tea"). */
+export function synonymsFor(text: string): string[] {
+  return SYNONYMS[text.trim().toLowerCase()] ?? [];
+}
+
 const Rephrase = z.object({
   phrases: z.array(z.string()).describe("2-4 short phrases in plain English for the same interest as a venue, menu item, cuisine, vibe or activity"),
   categories: z.array(z.enum(PLACE_CATEGORIES)).describe("1-3 kinds of place someone with this interest would enjoy"),

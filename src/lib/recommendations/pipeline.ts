@@ -26,6 +26,8 @@ export interface SearchInput {
   feedback: FeedbackEntry[];
   clientNow: string;
   onStatus?: (label: string) => void;
+  /** Places found another way (a text search for "boba") that must be ranked and kept alongside the inventory. */
+  extraPlaces?: Place[];
 }
 
 /**
@@ -53,7 +55,8 @@ export async function runSearch(input: SearchInput): Promise<SearchResult> {
 
   input.onStatus?.("Finding places that fit…");
   const places = inventory.places.map((p) => taste.enriched.get(p.id) ?? p);
-  const candidates = dedupe([...places, ...taste.extraPlaces]).map((place) => ({ place, cultural: taste.evidence.get(place.id) }));
+  const candidates = dedupe([...places, ...taste.extraPlaces, ...(input.extraPlaces ?? [])]).map((place) => ({ place, cultural: taste.evidence.get(place.id) }));
+  const keep = new Set((input.extraPlaces ?? []).map((p) => p.id));
   const { recommendations, filteredOut } = rank({
     candidates,
     location,
@@ -69,7 +72,7 @@ export async function runSearch(input: SearchInput): Promise<SearchResult> {
     constraints,
     tasteSignals: input.tasteSignals,
     // Both lenses must be able to show their own top 40, so keep the union (still in practical order).
-    recommendations: recommendations.filter((r) => r.practicalRank <= 40 || r.tasteRank <= 40),
+    recommendations: recommendations.filter((r) => r.practicalRank <= 40 || r.tasteRank <= 40 || keep.has(r.place.id)),
     filteredOut: filteredOut.slice(0, 60),
     inventory: {
       provider: inventory.provider,

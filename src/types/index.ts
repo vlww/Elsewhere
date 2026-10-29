@@ -233,6 +233,8 @@ export type TrailMode = (typeof TRAIL_MODES)[number];
  */
 export const TrailSpecSchema = z.object({
   slots: z.array(z.array(PlaceCategory).min(1)).min(1).max(5).optional(),
+  /** What the user literally asked for at each slot when it's more specific than a kind of place ("boba", "ramen"); null otherwise. */
+  slotQueries: z.array(z.string().max(60).nullable()).max(5).optional(),
   /** Used when no slots are given. */
   stops: z.number().int().min(2).max(5).default(3),
   /** Visit the slots in the order given (the user listed them in sequence). */

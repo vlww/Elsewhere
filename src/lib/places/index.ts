@@ -4,7 +4,7 @@ import type { Place } from "@/types";
 import { demoProvider, inDemoArea } from "./providers/demo";
 import { googleProvider } from "./providers/google";
 import { overpassProvider } from "./providers/overpass";
-import { ProviderError, type NearbyQuery, type PlaceProvider } from "./providers/types";
+import { ProviderError, type NearbyQuery, type PlaceProvider, type TextQuery } from "./providers/types";
 
 export { ProviderError } from "./providers/types";
 export { DEMO_AREA, inDemoArea } from "./providers/demo";
@@ -56,4 +56,23 @@ export async function searchInventory(q: NearbyQuery): Promise<{ places: Place[]
     }
   }
   throw lastError ?? new ProviderError("no providers", "No places provider is available.", "config");
+}
+
+const textCache = new TtlCache<Place[]>(10 * 60 * 1000);
+
+/** Free-text search from the first provider that supports it; [] when none does or it fails. */
+export async function searchByText(q: TextQuery): Promise<Place[]> {
+  const provider = chain().find((p) => p.searchText);
+  if (!provider?.searchText) return [];
+  const key = `${provider.id}:${q.text.toLowerCase()}:${roundCoord(q.lat)}:${roundCoord(q.lon)}:${Math.round(q.radiusM / 100)}`;
+  const hit = textCache.get(key);
+  if (hit) return hit;
+  try {
+    const places = await provider.searchText(q);
+    textCache.set(key, places);
+    return places;
+  } catch (e) {
+    console.warn(`[places] text ${provider.id}: ${(e as Error).message}`);
+    return [];
+  }
 }

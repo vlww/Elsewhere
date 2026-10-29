@@ -71,6 +71,8 @@ export function culturalLine(ev: CulturalEvidence | undefined, interestNames: st
 
 const OUTSIDE: PlaceCategory[] = ["park", "garden", "plaza"];
 
+const an = (word: string) => (/^[aeiou]/i.test(word) ? "An" : "A");
+
 function partOfDay(hhmm: string) {
   const h = Number(hhmm.slice(0, 2));
   return h < 11 ? "Morning" : h < 17 ? "Afternoon" : "Evening";
@@ -86,12 +88,13 @@ export function titleAndTheme(cats: PlaceCategory[], spec: TrailSpec, startAt: s
   else if (spec.maxPriceLevel === 1) title = `The Budget ${when === "Evening" ? "Evening" : "Reset"}`;
   else if (/\b(creative|art|inspir)/.test(mood) && has(["gallery", "museum", "arts_centre", "bookstore", "music"])) title = `The Creative ${when}`;
   else if (cats.includes("cinema")) title = "The Film Walk";
-  else if (/date|romantic/.test(mood)) title = `A ${when} for Two`;
+  else if (/date|romantic/.test(mood)) title = `${an(when)} ${when} for Two`;
   else if (has(["gallery", "museum", "arts_centre"]) && has(OUTSIDE)) title = `The Creative ${when}`;
   else if (has(["bookstore", "library"]) && (has(OUTSIDE) || has(["tea", "cafe"]))) title = `The Slow ${when}`;
+  else if (/\b(nature|photo|shoot|green|outdoor)/.test(mood) && has(OUTSIDE)) title = `The Green ${when}`;
   else if (cats.includes("music")) title = "Crates & Corners";
   else if (cats[cats.length - 1] === "food") title = `${when} into Dinner`;
-  else title = `A ${when} Wander`;
+  else title = `${an(when)} ${when} Wander`;
 
   const parts = [
     has(["gallery", "museum", "arts_centre"]) ? "art" : has(["bookstore", "library"]) ? "books" : has(["music"]) ? "records" : cats.includes("cinema") ? "a film" : null,
