@@ -4,35 +4,28 @@ import { useId } from "react";
 const SUNSET = ["#F97316", "#F0563A", "#E0457B", "#8B2F8F", "#3F1C5C"];
 
 /**
- * A full retro sun. An E is carved out of it: its arms are the horizon stripes of an 80s sunset, running
- * out through the open right side, and below it the stripes keep going, thickening as the sun fades out.
+ * A sun on the horizon: a solid dome on top, and below it three stripes that form an E. The E's spine
+ * is the lower-left curve of the circle, and its middle arm stops halfway.
  */
 function SunsetMark({ size = 30 }: { size?: number }) {
   const id = useId().replace(/:/g, "");
+  const stroke = { stroke: `url(#${id}-sun)`, strokeWidth: 2.9, strokeLinecap: "round" as const, fill: "none" };
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden className="shrink-0">
       <defs>
-        <linearGradient id={`${id}-sun`} x1="0" y1="0" x2="0" y2="1">
+        <linearGradient id={`${id}-sun`} gradientUnits="userSpaceOnUse" x1="0" y1="3" x2="0" y2="29">
           <stop offset="0" stopColor="#FFC94D" />
-          <stop offset="0.35" stopColor={SUNSET[0]} />
-          <stop offset="0.68" stopColor={SUNSET[2]} />
+          <stop offset="0.38" stopColor={SUNSET[0]} />
+          <stop offset="0.7" stopColor={SUNSET[2]} />
           <stop offset="1" stopColor={SUNSET[3]} />
         </linearGradient>
-        <mask id={`${id}-carve`}>
-          <rect width="32" height="32" fill="#fff" />
-          <g fill="#000">
-            {/* The E: spine, then three arms that thicken downward like sunset stripes. */}
-            <rect x="9.6" y="7" width="2.6" height="15" />
-            <rect x="9.6" y="7" width="23" height="2.1" />
-            <rect x="9.6" y="13.25" width="23" height="2.35" />
-            <rect x="9.6" y="19.4" width="23" height="2.6" />
-            {/* The fade below. */}
-            <rect x="0" y="24.6" width="32" height="1.5" />
-            <rect x="0" y="27.5" width="32" height="2.2" />
-          </g>
-        </mask>
       </defs>
-      <circle cx="16" cy="16" r="14.2" fill={`url(#${id}-sun)`} mask={`url(#${id}-carve)`} />
+      {/* Circle: centre (16, 15.5), radius 13. */}
+      <path d="M3 15.5 A13 13 0 0 1 29 15.5 Z" fill={`url(#${id}-sun)`} />
+      <path d="M3.6 19.6 L28.3 19.6" {...stroke} />
+      <path d="M5.8 23.6 L19.5 23.6" {...stroke} />
+      <path d="M10.6 27.6 L25 27.6" {...stroke} />
+      <path d="M3.6 19.6 A13 13 0 0 0 10.6 27.6" {...stroke} />
     </svg>
   );
 }
