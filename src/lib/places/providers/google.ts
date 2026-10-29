@@ -7,7 +7,9 @@ import { ProviderError, type NearbyQuery, type PlaceProvider, type TextQuery } f
 const TYPE_GROUPS: { types: string[]; categories: PlaceCategory[] }[] = [
   { types: ["cafe", "coffee_shop", "tea_house"], categories: ["cafe", "tea"] },
   { types: ["library", "book_store"], categories: ["library", "bookstore"] },
-  { types: ["park", "art_gallery", "museum"], categories: ["park", "garden", "gallery", "museum", "plaza"] },
+  // Parks get their own request: in dense areas the 20 nearest galleries and museums would crowd them out.
+  { types: ["park", "botanical_garden", "garden"], categories: ["park", "garden", "plaza"] },
+  { types: ["art_gallery", "museum"], categories: ["gallery", "museum"] },
   { types: ["restaurant", "bakery"], categories: ["food"] },
 ];
 
