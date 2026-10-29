@@ -12,15 +12,15 @@ import { entityKindLabel } from "./entityLabels";
  * (ambience and decor) that places are actually labelled with.
  */
 const VIBES: { id: string; name: string; hint: string; tint: string }[] = [
-  { id: "urn:tag:ambience:qloo:cozy", name: "Cozy", hint: "Warm, snug, unhurried", tint: "#F6C29B" },
+  { id: "urn:tag:ambience:qloo:cozy", name: "Cozy", hint: "Warm, unhurried", tint: "#F6C29B" },
   { id: "urn:tag:ambience:qloo:quiet", name: "Quiet", hint: "Room to think", tint: "#D9D0F2" },
-  { id: "urn:tag:ambience:qloo:artsy", name: "Artsy", hint: "Murals, makers, galleries", tint: "#F2B9C8" },
-  { id: "urn:tag:decor:qloo:vintage", name: "Vintage", hint: "Worn-in and collected", tint: "#F7E6A2" },
-  { id: "urn:tag:decor:qloo:minimalist", name: "Minimalist", hint: "Clean lines, calm design", tint: "#E4E0EA" },
-  { id: "urn:tag:ambience:qloo:lively", name: "Lively", hint: "A buzz, people around", tint: "#F2958A" },
-  { id: "urn:tag:ambience:place:hidden_gem", name: "Hidden gem", hint: "Off the obvious path", tint: "#B9C8B0" },
-  { id: "urn:tag:ambience:qloo:romantic", name: "Romantic", hint: "Soft light, good for two", tint: "#E9A5C9" },
-  { id: "urn:tag:ambience:qloo:bohemian", name: "Bohemian", hint: "Eclectic, free-spirited", tint: "#C9A8E6" },
+  { id: "urn:tag:ambience:qloo:artsy", name: "Artsy", hint: "Makers, murals", tint: "#F2B9C8" },
+  { id: "urn:tag:decor:qloo:vintage", name: "Vintage", hint: "Worn-in, retro", tint: "#F7E6A2" },
+  { id: "urn:tag:decor:qloo:minimalist", name: "Minimalist", hint: "Calm design", tint: "#E4E0EA" },
+  { id: "urn:tag:ambience:qloo:lively", name: "Lively", hint: "A good buzz", tint: "#F2958A" },
+  { id: "urn:tag:ambience:place:hidden_gem", name: "Hidden gem", hint: "Off the path", tint: "#B9C8B0" },
+  { id: "urn:tag:ambience:qloo:romantic", name: "Romantic", hint: "Good for two", tint: "#E9A5C9" },
+  { id: "urn:tag:ambience:qloo:bohemian", name: "Bohemian", hint: "Eclectic", tint: "#C9A8E6" },
 ];
 
 const NAMED = ["Wes Anderson", "Studio Ghibli", "Phoebe Bridgers", "Haruki Murakami", "MUJI", "Specialty coffee", "Live music"];
@@ -93,7 +93,7 @@ export function TastePanel() {
           Your <em>Taste</em>
         </h2>
         <p className="mt-2 text-[13px] leading-relaxed text-ink-soft">
-          Your style, not a destination. Pick the vibes you&apos;re drawn to, or add films, brands, artists and anything in between. Elsewhere uses them to notice places that might suit you.
+          Every aspect of your style. Pick the vibes you&apos;re drawn to, or add films, brands, artists and anything in between.
         </p>
         {mode === "demo" && (
           <p className="mt-2 rounded-[var(--radius-md)] bg-butter/45 px-3 py-2 text-[12px] leading-snug text-[#6D5A1F] ring-1 ring-[#E8D27A]/50">
@@ -114,13 +114,13 @@ export function TastePanel() {
                     aria-pressed={on}
                     onClick={() => toggleVibe(v)}
                     className={cx(
-                      "relative h-full w-full rounded-[14px] px-2.5 py-2 text-left ring-1 transition-[transform,box-shadow] hover:-translate-y-0.5",
+                      "relative h-full w-full rounded-[12px] px-2.5 py-1.5 text-left ring-1 transition-[transform,box-shadow] hover:-translate-y-0.5",
                       on ? "ring-2 ring-aubergine/70" : "ring-white/80",
                     )}
                     style={{ background: `linear-gradient(140deg, ${v.tint}cc, ${v.tint}55)` }}
                   >
-                    <span className="block text-[13px] font-semibold text-aubergine">{v.name}</span>
-                    <span className="mt-0.5 block text-[10.5px] leading-snug text-plum/80">{v.hint}</span>
+                    <span className="block text-[12.5px] font-semibold leading-snug text-aubergine">{v.name}</span>
+                    <span className="block truncate text-[10.5px] leading-tight text-plum/80">{v.hint}</span>
                     {on && (
                       <span className="absolute right-1.5 top-1.5 grid h-4 w-4 place-items-center rounded-full bg-aubergine text-ivory">
                         <Check size={10} />
