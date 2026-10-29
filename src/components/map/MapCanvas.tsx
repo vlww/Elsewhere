@@ -934,6 +934,25 @@ export function MapCanvas() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, fitRequest]);
 
+  /**
+   * fitBounds adds the map's current padding (left behind by a flyTo that used panel padding) to the
+   * padding it's given, so pass only what's missing; and on narrow screens shrink it so the bounds fit.
+   */
+  function framingPadding(map: maplibregl.Map) {
+    const want = panelPadding();
+    const { top = 0, bottom = 0, left = 0, right = 0 } = map.getPadding();
+    const cur = { top, bottom, left, right };
+    const room = map.getContainer().clientWidth - 160;
+    const sides = want.left + want.right;
+    const k = sides > room ? room / sides : 1;
+    return {
+      top: Math.max(0, want.top - cur.top),
+      bottom: Math.max(0, want.bottom - cur.bottom),
+      left: Math.max(0, Math.round(want.left * k) - cur.left),
+      right: Math.max(0, Math.round(want.right * k) - cur.right),
+    };
+  }
+
   function frameResults() {
     const map = mapRef.current;
     const s = useElsewhere.getState();
@@ -946,7 +965,7 @@ export function MapCanvas() {
     const bounds = new maplibregl.LngLatBounds([s.location.lon, s.location.lat], [s.location.lon, s.location.lat]);
     pts.forEach((p) => bounds.extend(p));
     map.fitBounds(bounds, {
-      padding: panelPadding(),
+      padding: framingPadding(map),
       maxZoom: 16.5,
       duration: prefersReducedMotion() ? 0 : 1200,
       pitch: s.mapMode === "immersive" ? 58 : 0,

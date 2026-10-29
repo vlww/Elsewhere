@@ -149,7 +149,7 @@ function TasteLegend({ highlights, matched, compact }: { highlights: TasteHighli
               {mapMode === "immersive"
                 ? "Coloured buildings are stylised illustrations on real OpenStreetMap footprints, not exact architecture. Where none is mapped, a small pavilion marks the spot."
                 : "Tinted outlines are the real buildings these places are in (OpenStreetMap)."}{" "}
-              Colour shows which interest contributed most; it isn&apos;t a claim about their style.{" "}
+              Each place&apos;s colour comes from its own photo, softened to a pastel.{" "}
               {demo ? "Simulated in demo mode, not Qloo results." : "Matches come from Qloo Insights affinity for these places."}
             </p>
           </>
