@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import * as maplibregl from "maplibre-gl";
 import type { StyleSpecification } from "@maplibre/maplibre-gl-style-spec";
 import { Bookmark, Undo2, Crosshair, Sparkles } from "lucide-react";
-import { useElsewhere } from "@/store/useElsewhere";
+import { categoryShown, useElsewhere } from "@/store/useElsewhere";
 import type { Recommendation } from "@/types";
 import { CATEGORY_LABEL, CATEGORY_META } from "@/components/places/categoryMeta";
 import type { TasteHighlight } from "@/lib/taste/highlights";
@@ -82,7 +82,7 @@ function immersivePoints(highlights: Map<string, TasteHighlight>, footprints: Ma
   const layerOn = s.tasteLayer && highlights.size > 0;
   return s
     .orderedRecommendations()
-    .filter((r) => !s.hiddenCategories.includes(r.place.category))
+    .filter((r) => categoryShown(s.shownCategories, r.place.category))
     .slice(0, 10)
     .map((r) => {
       const h = highlights.get(r.place.id);
@@ -142,7 +142,7 @@ export function MapCanvas() {
   const constraints = useElsewhere((s) => s.constraints);
   const selectedPlaceId = useElsewhere((s) => s.selectedPlaceId);
   const hoveredPlaceId = useElsewhere((s) => s.hoveredPlaceId);
-  const hiddenCategories = useElsewhere((s) => s.hiddenCategories);
+  const shownCategories = useElsewhere((s) => s.shownCategories);
   const lensMode = useElsewhere((s) => s.lensMode);
   const sortMode = useElsewhere((s) => s.sortMode);
   const tasteSignals = useElsewhere((s) => s.tasteSignals);
@@ -563,7 +563,7 @@ export function MapCanvas() {
     if (!ready || !map) return;
     const ordered: Recommendation[] = useElsewhere.getState().orderedRecommendations();
     const onTrail = new Set(useElsewhere.getState().trail?.stops.map((s) => s.placeId) ?? []);
-    const visible = ordered.filter((r) => !hiddenCategories.includes(r.place.category) && !onTrail.has(r.place.id));
+    const visible = ordered.filter((r) => categoryShown(shownCategories, r.place.category) && !onTrail.has(r.place.id));
     const top = visible.slice(0, MARKER_LIMIT);
     const rest = visible.slice(MARKER_LIMIT);
     const immersiveOn = mapMode === "immersive";
@@ -659,7 +659,7 @@ export function MapCanvas() {
     });
 
     immersive.current?.setPoints(immersivePoints(highlightById, footprints.current));
-  }, [ready, result, hiddenCategories, selectedPlaceId, hoveredPlaceId, lensMode, sortMode, tasteSignals.length, mapMode, highlightById, tasteLayer, highlights.length, footprintVersion, trail]);
+  }, [ready, result, shownCategories, selectedPlaceId, hoveredPlaceId, lensMode, sortMode, tasteSignals.length, mapMode, highlightById, tasteLayer, highlights.length, footprintVersion, trail]);
 
   // --- Taste Layer ----------------------------------------------------------
   useEffect(() => {

@@ -116,8 +116,34 @@ const QlooPlace = z
   .passthrough();
 export type QlooPlace = z.infer<typeof QlooPlace>;
 
+// --- Tag search ----------------------------------------------------------------
+
+const TagHit = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    type: z.string().optional(),
+    popularity: z.number().optional(),
+    parents: z.array(z.object({ type: z.string() }).passthrough()).optional(),
+  })
+  .passthrough();
+export type QlooTagHit = z.infer<typeof TagHit>;
+
+/** Qloo tags ("Vintage", "Specialty Coffee", "Hiking", "Jazz") — general interests that aren't a single title or person. */
+export async function searchTags(query: string, take = 12): Promise<QlooTagHit[]> {
+  const json = await get("/v2/tags", { "filter.query": query, take });
+  const tags = (json as { results?: { tags?: unknown[] } })?.results?.tags;
+  if (!Array.isArray(tags)) return [];
+  return tags.flatMap((t) => {
+    const p = TagHit.safeParse(t);
+    return p.success ? [p.data] : [];
+  });
+}
+
 export async function insightsPlaces(args: {
   entityIds: string[];
+  /** Interest tags used as signals (as opposed to `tags`, which filters by place category). */
+  signalTags?: string[];
   lat: number;
   lon: number;
   radiusM: number;
@@ -127,7 +153,8 @@ export async function insightsPlaces(args: {
 }): Promise<{ places: QlooPlace[]; warning?: string }> {
   const json = await get("/v2/insights", {
     "filter.type": "urn:entity:place",
-    "signal.interests.entities": args.entityIds.join(","),
+    "signal.interests.entities": args.entityIds.length ? args.entityIds.join(",") : undefined,
+    "signal.interests.tags": args.signalTags?.length ? args.signalTags.join(",") : undefined,
     // WKT is longitude-first.
     "filter.location": `POINT(${args.lon.toFixed(6)} ${args.lat.toFixed(6)})`,
     "filter.location.radius": Math.round(args.radiusM),

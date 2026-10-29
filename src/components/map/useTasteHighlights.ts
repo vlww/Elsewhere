@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { useElsewhere } from "@/store/useElsewhere";
+import { categoryShown, useElsewhere } from "@/store/useElsewhere";
 import { rankedMatches, tasteHighlights } from "@/lib/taste/highlights";
 
 /**
@@ -16,10 +16,10 @@ export function useTasteHighlights() {
 export function useTaste() {
   const tasteLayer = useElsewhere((s) => s.tasteLayer);
   const result = useElsewhere((s) => s.result);
-  const hidden = useElsewhere((s) => s.hiddenCategories);
+  const shown = useElsewhere((s) => s.shownCategories);
   return useMemo(() => {
     if (!tasteLayer || !result) return { highlights: [], matched: 0 };
-    const recs = result.recommendations.filter((r) => !hidden.includes(r.place.category));
+    const recs = result.recommendations.filter((r) => categoryShown(shown, r.place.category));
     return { highlights: tasteHighlights(recs, result.tasteSignals), matched: rankedMatches(recs, result.tasteSignals).length };
-  }, [tasteLayer, result, hidden]);
+  }, [tasteLayer, result, shown]);
 }

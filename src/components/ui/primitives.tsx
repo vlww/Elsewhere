@@ -81,7 +81,7 @@ export function Segmented<T extends string>({
   size?: "sm" | "md";
 }) {
   return (
-    <div role="radiogroup" aria-label={label} className="relative inline-flex rounded-full bg-aubergine/[0.06] p-[3px]">
+    <div role="radiogroup" aria-label={label} className="relative inline-flex shrink-0 rounded-full bg-aubergine/[0.06] p-[3px]">
       {options.map((o) => {
         const active = o.value === value;
         return (
@@ -93,7 +93,7 @@ export function Segmented<T extends string>({
             title={o.hint}
             onClick={() => onChange(o.value)}
             className={cx(
-              "relative z-10 inline-flex items-center gap-1.5 rounded-full font-medium transition-all duration-200 disabled:opacity-45",
+              "relative z-10 inline-flex items-center gap-1.5 whitespace-nowrap rounded-full font-medium transition-all duration-200 disabled:opacity-45",
               size === "sm" ? "h-7 px-3 text-[12px]" : "h-8 px-3.5 text-[13px]",
               active ? "bg-ivory text-aubergine shadow-[0_1px_2px_rgba(48,38,56,0.08),0_4px_10px_-4px_rgba(89,52,82,0.25)]" : "text-ink-soft hover:text-aubergine",
             )}

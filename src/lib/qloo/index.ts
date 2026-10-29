@@ -1,6 +1,6 @@
 import { distanceM } from "@/lib/geo";
 import type { CulturalEntity, CulturalEvidence, Place, PlaceCategory } from "@/types";
-import { insightsPlaces, QlooError, readExplainability, searchEntities, type QlooPlace } from "./client";
+import { insightsPlaces, QlooError, readExplainability, searchEntities, searchTags, type QlooPlace, type QlooTagHit } from "./client";
 import { demoAffinity, demoSearch } from "./demo";
 
 export { QlooError } from "./client";
@@ -25,10 +25,40 @@ const TYPE_LABEL: Record<string, string> = {
 };
 export const entityTypeLabel = (t: string) => TYPE_LABEL[t] ?? t.replace("urn:entity:", "");
 
+/** Interests that are Qloo tags (a vibe, a cuisine, an activity) rather than one title or person. */
+export const isTagInterest = (e: { id: string }) => e.id.startsWith("urn:tag:");
+
+/** Tags that describe places come first: they move the map most directly. */
+const placeTag = (t: QlooTagHit) => (t.parents ?? []).some((p) => p.type === "urn:entity:place");
+
+function tagInterests(hits: QlooTagHit[], query: string): CulturalEntity[] {
+  const q = query.trim().toLowerCase();
+  const ranked = [...hits].sort(
+    (a, b) =>
+      Number(b.name.toLowerCase() === q) - Number(a.name.toLowerCase() === q) ||
+      Number(placeTag(b)) - Number(placeTag(a)) ||
+      (b.popularity ?? 0) - (a.popularity ?? 0),
+  );
+  const seen = new Set<string>();
+  const out: CulturalEntity[] = [];
+  for (const t of ranked) {
+    const key = t.name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ id: t.id, name: t.name, type: t.type ?? "urn:tag", provenance: "live", origin: "picked" });
+    if (out.length === 3) break;
+  }
+  return out;
+}
+
 export async function resolveEntities(query: string, types?: string[]): Promise<CulturalEntity[]> {
   if (tasteMode() === "demo") return demoSearch(query);
-  const hits = await searchEntities(query, types?.length ? types : DEFAULT_TYPES);
-  return hits.map((h) => {
+  const [hits, tags] = await Promise.all([
+    searchEntities(query, types?.length ? types : DEFAULT_TYPES),
+    // Tag lookup is a bonus; a failure here shouldn't hide title matches.
+    types?.length ? Promise.resolve([]) : searchTags(query).catch(() => []),
+  ]);
+  const entities = hits.map((h) => {
     const type = h.subtype ?? h.types?.find((t) => t.startsWith("urn:entity:")) ?? "urn:entity";
     const bits = [entityTypeLabel(type), h.disambiguation, h.properties?.release_year, h.properties?.short_description]
       .filter(Boolean)
@@ -43,6 +73,28 @@ export async function resolveEntities(query: string, types?: string[]): Promise<
       origin: "picked" as const,
     };
   });
+  const general = tagInterests(tags, query);
+  // A general word ("vintage", "jazz") means the interest itself, even when some band shares the name.
+  const exact = general.length > 0 && general[0].name.toLowerCase() === query.trim().toLowerCase();
+  return exact ? [...general, ...entities] : [...entities, ...general];
+}
+
+/**
+ * Interests saved under the other taste mode (e.g. picked in demo mode, now running live) are looked up
+ * again by name, so they keep working instead of being dropped.
+ */
+async function adoptSignals(signals: CulturalEntity[], mode: TasteMode): Promise<CulturalEntity[]> {
+  return Promise.all(
+    signals.map(async (s) => {
+      if (s.provenance === mode) return s;
+      try {
+        const hit = (await resolveEntities(s.name)).find((e) => e.name.toLowerCase() === s.name.toLowerCase());
+        return hit ? { ...hit, origin: s.origin } : s;
+      } catch {
+        return s;
+      }
+    }),
+  );
 }
 
 // --- Matching Qloo places to the place inventory ---------------------------------
@@ -189,6 +241,15 @@ function enrichFromQloo(p: Place, qp: QlooPlace): Place | null {
   };
 }
 
+/** Which interest tags a place carries itself; with a single tag signal, that tag is the reason. */
+function tagContributions(qp: QlooPlace, tagSignals: CulturalEntity[]) {
+  if (tagSignals.length === 1) return [{ entityId: tagSignals[0].id, entityName: tagSignals[0].name, score: 1 }];
+  const own = new Set((qp.tags ?? []).flatMap((t) => [t.id, t.tag_id, t.name?.toLowerCase()]).filter(Boolean));
+  return tagSignals
+    .filter((s) => own.has(s.id) || own.has(s.name.toLowerCase()))
+    .map((s) => ({ entityId: s.id, entityName: s.name, score: 1 }));
+}
+
 export interface TasteResult {
   mode: TasteMode;
   status: "ok" | "no-signals" | "error";
@@ -210,7 +271,8 @@ export async function culturalEvidence(args: {
   categories: PlaceCategory[];
 }): Promise<TasteResult> {
   const mode = tasteMode();
-  const usable = args.signals.filter((s) => s.provenance === mode);
+  const adopted = await adoptSignals(args.signals, mode);
+  const usable = adopted.filter((s) => s.provenance === mode);
   const evidence = new Map<string, CulturalEvidence>();
   if (!usable.length) {
     const skipped = args.signals.length - usable.length;
@@ -218,7 +280,7 @@ export async function culturalEvidence(args: {
       mode,
       status: "no-signals",
       message: skipped
-        ? `${skipped} interest(s) came from ${mode === "live" ? "demo" : "live"} mode and can't be used here.`
+        ? `${skipped === 1 ? "That interest isn't" : "Those interests aren't"} available ${mode === "live" ? "in live taste data" : "in demo mode"}. Try adding ${skipped === 1 ? "it" : "them"} again.`
         : undefined,
       evidence,
       extraPlaces: [],
@@ -244,20 +306,33 @@ export async function culturalEvidence(args: {
   }
 
   try {
-    const { places, warning } = await insightsPlaces({
-      entityIds: usable.map((s) => s.id),
-      lat: args.lat,
-      lon: args.lon,
-      radiusM: args.radiusM,
-      tags: qlooTagsFor(args.categories),
+    // Titles and general interests are asked separately: in one request the titles drown out the tags.
+    const tagSignals = usable.filter(isTagInterest);
+    const entitySignals = usable.filter((s) => !isTagInterest(s));
+    const common = { lat: args.lat, lon: args.lon, radiusM: args.radiusM, tags: qlooTagsFor(args.categories) };
+    const runs = await Promise.all([
+      entitySignals.length ? insightsPlaces({ ...common, entityIds: entitySignals.map((s) => s.id) }) : null,
+      tagSignals.length ? insightsPlaces({ ...common, entityIds: [], signalTags: tagSignals.map((s) => s.id) }) : null,
+    ]);
+    const warning = runs.find((r) => r?.warning)?.warning;
+    // One list, strongest affinity first, each Qloo place once (keeping its stronger appearance).
+    const byId = new Map<string, { qp: QlooPlace; viaTags: boolean }>();
+    runs.forEach((r, i) => {
+      for (const qp of r?.places ?? []) {
+        const prev = byId.get(qp.entity_id);
+        if (!prev || (qp.query?.affinity ?? 0) > (prev.qp.query?.affinity ?? 0)) byId.set(qp.entity_id, { qp, viaTags: i === 1 });
+      }
     });
+    const places = [...byId.values()].sort((a, b) => (b.qp.query?.affinity ?? 0) - (a.qp.query?.affinity ?? 0));
     const extraPlaces: Place[] = [];
     const enriched = new Map<string, Place>();
-    for (const qp of places) {
+    for (const { qp, viaTags } of places) {
       const at = qlooLatLon(qp);
-      const contributions = readExplainability(qp.query?.explainability)
-        .filter((c) => names.has(c.entityId))
-        .map((c) => ({ entityId: c.entityId, entityName: names.get(c.entityId)!, score: c.score }));
+      const contributions = viaTags
+        ? tagContributions(qp, tagSignals)
+        : readExplainability(qp.query?.explainability)
+            .filter((c) => names.has(c.entityId))
+            .map((c) => ({ entityId: c.entityId, entityName: names.get(c.entityId)!, score: c.score }));
       const base: Omit<CulturalEvidence, "match"> = {
         provenance: "live",
         affinity: qp.query?.affinity,

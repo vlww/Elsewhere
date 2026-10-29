@@ -7,14 +7,9 @@ import { cx, IconButton } from "@/components/ui/primitives";
 import { entityKindLabel } from "@/components/taste/entityLabels";
 
 const STARTERS = [
-  "I need to lock in for two hours, but I can't stand sterile libraries.",
   "Somewhere to read with a little background noise.",
-  "Find me somewhere that feels like a Sofia Coppola movie.",
   "I have an hour before class. Somewhere peaceful, preferably outdoors.",
-  "Surprise me — somewhere I wouldn't normally go.",
-  "Make the map more colorful around places I'd probably love.",
-  "Plan a creative afternoon around my interests.",
-  "Find a bookstore, somewhere to sit outside, and somewhere inexpensive to eat.",
+  "Plan a slow afternoon: a bookstore, somewhere green, then food.",
 ];
 
 const NOTE_ICON: Record<ChatNote["kind"], typeof MapIcon> = {
@@ -206,7 +201,7 @@ export function ChatPanel({ className = "" }: { className?: string }) {
   return (
     <section aria-label="Conversation" className={cx("flex min-h-0 flex-col", className)}>
       <div className="flex items-center justify-between px-5 pb-1 pt-4">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-faint">Guide</p>
+        <h2 className="font-serif text-[26px] leading-none text-aubergine">Guide</h2>
         {messages.length > 0 && (
           <IconButton label="New conversation" onClick={resetChat} className="h-7 w-7">
             <RotateCcw size={13} />
@@ -215,13 +210,8 @@ export function ChatPanel({ className = "" }: { className?: string }) {
       </div>
       <div ref={scroller} className="scroll-soft min-h-0 flex-1 space-y-4 overflow-y-auto px-5 pb-4 pt-1">
         {messages.length === 0 ? (
-          <div className="pt-2">
-            <p className="font-serif text-[28px] leading-[1.1] text-aubergine">
-              {location ? <>Where to, <em>today?</em></> : <>Tell me what you&apos;re after.</>}
-            </p>
-            <p className="mt-2 text-[13.5px] leading-relaxed text-ink-soft">
-              Say it however it comes out. I&apos;ll look nearby, weigh what matters, and put the good ones on the map.
-            </p>
+          <div>
+            <p className="text-[13.5px] leading-relaxed text-ink-soft">{location ? "Where to, today?" : "Tell me what you're after."}</p>
             <div className="mt-4 flex flex-col items-start gap-1.5">
               {STARTERS.map((s) => (
                 <button

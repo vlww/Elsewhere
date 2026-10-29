@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Box, ChevronDown, Map as MapIcon, Sparkles, X } from "lucide-react";
+import { useState } from "react";
+import { Box, ChevronDown, Map as MapIcon, Sparkles } from "lucide-react";
 import { useElsewhere } from "@/store/useElsewhere";
-import { categoryTally, interestColors, type TasteHighlight } from "@/lib/taste/highlights";
-import { CATEGORY_LABEL } from "@/components/places/categoryMeta";
+import { interestColors, type TasteHighlight } from "@/lib/taste/highlights";
 import { Chip, cx, Segmented } from "@/components/ui/primitives";
 import { useTaste } from "./useTasteHighlights";
 
@@ -77,7 +76,6 @@ function TasteLegend({ highlights, matched, compact }: { highlights: TasteHighli
   const { setPanel, setMobileTab } = useElsewhere.getState();
   // Summary and colour key always show; the tier key and fine print fold away.
   const [open, setOpen] = useState(false);
-  const change = useChangeNote(highlights);
 
   const used = result?.tasteSignals ?? [];
   const colors = interestColors(used);
@@ -90,7 +88,7 @@ function TasteLegend({ highlights, matched, compact }: { highlights: TasteHighli
   if (!signals.length) {
     body = (
       <>
-        <p>Tell Elsewhere a few films, artists or authors you love, and places that line up with them will light up here.</p>
+        <p>Tell Elsewhere what you love — a vibe, a cuisine, a film, an artist — and places that line up with it light up here.</p>
         <button
           onClick={() => {
             setPanel("taste");
@@ -182,50 +180,7 @@ function TasteLegend({ highlights, matched, compact }: { highlights: TasteHighli
       </div>
       {body}
       <div aria-live="polite">
-        {change && (
-          <p className="mt-2 flex items-start gap-1.5 rounded-[12px] bg-[linear-gradient(100deg,#FCE3EA,#EEE6FB)] px-2.5 py-1.5 text-[11.5px] text-plum animate-rise">
-            <span className="flex-1">{change.text}</span>
-            <button onClick={change.dismiss} aria-label="Dismiss" className="mt-0.5 text-ink-faint hover:text-aubergine">
-              <X size={12} />
-            </button>
-          </p>
-        )}
       </div>
     </section>
   );
-}
-
-/** "Adding Wes Anderson lit up 3 places — 2 galleries, 1 bookstore." Shown briefly after interests change. */
-function useChangeNote(highlights: TasteHighlight[]) {
-  const result = useElsewhere((s) => s.result);
-  const searching = useElsewhere((s) => s.searching);
-  const last = useRef<{ key: string; names: Map<string, string>; ids: Set<string> } | null>(null);
-  const hide = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const [note, setNote] = useState<string | null>(null);
-  useEffect(() => () => clearTimeout(hide.current), []);
-
-  useEffect(() => {
-    if (!result || searching) return;
-    const used = result.tasteSignals;
-    const key = used.map((e) => e.id).sort().join("|");
-    const ids = new Set(highlights.map((h) => h.placeId));
-    const prev = last.current;
-    last.current = { key, names: new Map(used.map((e) => [e.id, e.name])), ids };
-    if (!prev || prev.key === key) return;
-    const added = used.filter((e) => !prev.names.has(e.id)).map((e) => e.name);
-    const removed = [...prev.names].filter(([id]) => !used.some((e) => e.id === id)).map(([, n]) => n);
-    const lit = highlights.filter((h) => !prev.ids.has(h.placeId));
-    const faded = [...prev.ids].filter((id) => !ids.has(id)).length;
-    const who = added.length ? `Adding ${added.join(", ")}` : `Removing ${removed.join(", ")}`;
-    const what = lit.length
-      ? `lit up ${lit.length} place${lit.length === 1 ? "" : "s"} (${categoryTally(lit, (c) => CATEGORY_LABEL[c])})`
-      : "didn't light up anything new";
-    const basis = result.taste.mode === "demo" ? "simulated" : "from Qloo affinity";
-    const text = `${who} ${what}${faded ? `; ${faded} faded` : ""} — ${basis}.`;
-    clearTimeout(hide.current);
-    queueMicrotask(() => setNote(text));
-    hide.current = setTimeout(() => setNote(null), 9000);
-  }, [highlights, result, searching]);
-
-  return note ? { text: note, dismiss: () => setNote(null) } : null;
 }

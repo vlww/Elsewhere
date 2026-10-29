@@ -77,7 +77,8 @@ interface State {
   selectedPlaceId: string | null;
   hoveredPlaceId: string | null;
   detailOpen: boolean;
-  hiddenCategories: PlaceCategory[];
+  /** Kinds picked in the Explore chips; empty shows every kind. */
+  shownCategories: PlaceCategory[];
   sortMode: "fit" | "distance";
   saved: Record<string, SavedPlace>;
   feedback: FeedbackEntry[];
@@ -166,6 +167,9 @@ let tasteRerunTimer: ReturnType<typeof setTimeout> | null = null;
 // Store
 // ---------------------------------------------------------------------------
 
+/** Whether a kind of place passes the Explore chips (none picked = all). */
+export const categoryShown = (shown: PlaceCategory[], c: PlaceCategory) => !shown.length || shown.includes(c);
+
 export const useElsewhere = create<State & Actions>()(
   persist(
     (set, get) => {
@@ -186,7 +190,7 @@ export const useElsewhere = create<State & Actions>()(
               // A trail on the map stays while the results around it change.
               fitRequest: get().trail ? get().fitRequest : Date.now(),
               compareIds: get().compareIds.filter((id) => a.result.recommendations.some((r) => r.place.id === id)),
-              hiddenCategories: [],
+              shownCategories: [],
             });
             const n = a.result.recommendations.length;
             return { kind: "results", text: n ? `${n} place${n === 1 ? "" : "s"} on the map` : "Nothing fit those constraints" };
@@ -225,7 +229,7 @@ export const useElsewhere = create<State & Actions>()(
             showTrail(a.trail);
             return {
               kind: "trail",
-              text: revised ? `Trail updated · ${a.trail.changeNote ?? "recalculated"}` : `Trail: ${a.trail.stops.length} stops · about ${Math.round(a.trail.totalMin / 5) * 5} min`,
+              text: revised ? "Trail updated" : `Trail: ${a.trail.stops.length} stops · about ${Math.round(a.trail.totalMin / 5) * 5} min`,
             };
           }
           case "trail_story": {
@@ -302,7 +306,7 @@ export const useElsewhere = create<State & Actions>()(
         selectedPlaceId: null,
         hoveredPlaceId: null,
         detailOpen: false,
-        hiddenCategories: [],
+        shownCategories: [],
         sortMode: "fit",
         saved: {},
         feedback: [],
@@ -333,6 +337,27 @@ export const useElsewhere = create<State & Actions>()(
           } catch {
             /* status is informational */
           }
+          // Interests saved under the other taste mode (demo vs live) are looked up again by name.
+          const mode = get().status?.taste;
+          const stale = mode ? get().tasteSignals.filter((e) => e.provenance !== mode) : [];
+          if (!stale.length) return;
+          const swaps = await Promise.all(
+            stale.map(async (e) => {
+              try {
+                const json = await (await fetch(`/api/entities?q=${encodeURIComponent(e.name)}`)).json();
+                const hit = (json.entities as CulturalEntity[] | undefined)?.find((x) => x.name.toLowerCase() === e.name.toLowerCase());
+                return [e.id, hit ? { ...hit, origin: e.origin } : null] as const;
+              } catch {
+                return [e.id, null] as const;
+              }
+            }),
+          );
+          const next = new Map(swaps);
+          set({
+            tasteSignals: get()
+              .tasteSignals.map((e) => (next.has(e.id) ? next.get(e.id) ?? e : e))
+              .filter((e, i, a) => a.findIndex((x) => x.id === e.id) === i),
+          });
         },
 
         setLocation(loc, search = true) {
@@ -404,8 +429,8 @@ export const useElsewhere = create<State & Actions>()(
         },
 
         toggleCategory(c) {
-          const h = get().hiddenCategories;
-          set({ hiddenCategories: h.includes(c) ? h.filter((x) => x !== c) : [...h, c] });
+          const on = get().shownCategories;
+          set({ shownCategories: on.includes(c) ? on.filter((x) => x !== c) : [...on, c] });
         },
         setSortMode: (m) => set({ sortMode: m }),
 

@@ -79,66 +79,66 @@ function EmptyTrail() {
   const signals = useElsewhere((s) => s.tasteSignals);
   const savedTrails = useElsewhere((s) => s.savedTrails);
   const { planTrail, sendMessage, setMobileTab, openSavedTrail, deleteSavedTrail } = useElsewhere.getState();
-  const [budget, setBudget] = useState<"any" | "90" | "120" | "180">("any");
+  const [budget, setBudget] = useState<"any" | "60" | "120" | "180">("any");
   return (
-    <div className="scroll-soft min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-4">
-      <p className="flex items-center gap-1.5 px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-plum/70">
-        <Footprints size={12} /> Taste Trails
-      </p>
-      <h2 className="mt-1 px-1 font-serif text-[28px] leading-[1.05] text-aubergine">
-        A few places, <em>one</em> outing.
-      </h2>
-      <p className="mt-2 px-1 text-[13px] leading-relaxed text-ink-soft">
-        Real places in a walkable order, with routed travel times, listed hours at the time you&apos;d arrive
-        {signals.length ? <> and your interests ({signals.map((s) => s.name).join(", ")}) via Qloo</> : null}.
+    <div className="scroll-soft min-h-0 flex-1 overflow-y-auto px-5 pb-8 pt-5">
+      <h2 className="font-serif text-[28px] leading-[1.05] text-aubergine">Taste Trails</h2>
+      <p className="mt-2 text-[13.5px] leading-relaxed text-ink-soft">
+        A few places, one outing. Build a short route around a mood, interest, or free afternoon.
       </p>
       {agentReady && (
         <button
           onClick={() => {
             setMobileTab("guide");
-            void sendMessage(signals.length ? "Plan a creative afternoon around my interests." : "Plan me a relaxed afternoon nearby.");
+            void sendMessage(signals.length ? "Plan an afternoon around my interests." : "Plan me a relaxed afternoon nearby.");
           }}
-          className="mt-3 w-full rounded-[var(--radius-lg)] bg-aubergine px-4 py-3 text-left text-[13px] text-ivory shadow-[var(--shadow-lift)]"
+          className="mt-5 flex w-full items-center gap-3 rounded-[var(--radius-lg)] bg-aubergine px-4 py-3.5 text-left text-ivory shadow-[var(--shadow-lift)] transition-transform hover:-translate-y-0.5"
         >
-          <span className="flex items-center gap-1.5 font-semibold">
-            <Sparkles size={14} /> Ask the guide
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-ivory/15">
+            <Sparkles size={16} />
           </span>
-          <span className="mt-0.5 block text-[12px] text-ivory/75">“Plan a creative afternoon around my interests” — or anything: time, budget, a bookstore then dinner…</span>
+          <span className="min-w-0">
+            <span className="block text-[14px] font-semibold">Ask the guide</span>
+            <span className="block text-[12px] text-ivory/75">Describe the outing in your own words.</span>
+          </span>
         </button>
       )}
-      <div className="mt-4 flex items-center justify-between gap-2 px-1">
-        <p className="text-[11.5px] font-semibold uppercase tracking-[0.12em] text-ink-faint">Start from a mood</p>
-        <Segmented
-          label="Time available"
-          size="sm"
-          value={budget}
-          onChange={setBudget}
-          options={[
-            { value: "any", label: "Any" },
-            { value: "90", label: "1½ h" },
-            { value: "120", label: "2 h" },
-            { value: "180", label: "3 h" },
-          ]}
-        />
+      <div className="mt-7">
+        <p className="text-[11.5px] font-semibold uppercase tracking-[0.12em] text-ink-faint">How much time?</p>
+        <div className="mt-2.5">
+          <Segmented
+            label="Time available"
+            size="sm"
+            value={budget}
+            onChange={setBudget}
+            options={[
+              { value: "any", label: "Any" },
+              { value: "60", label: "1 hr" },
+              { value: "120", label: "2 hr" },
+              { value: "180", label: "3 hr" },
+            ]}
+          />
+        </div>
       </div>
-      <ul className="mt-2 grid grid-cols-2 gap-2">
+      <p className="mt-7 text-[11.5px] font-semibold uppercase tracking-[0.12em] text-ink-faint">Start from a mood</p>
+      <ul className="mt-2.5 grid grid-cols-2 gap-3">
         {PRESETS.map((p, i) => (
           <li key={p.label}>
             <button
               disabled={!location}
               onClick={() => void planTrail({ ...p.spec, ...(budget !== "any" ? { timeBudgetMin: Number(budget) } : {}) }, `Planning ${p.label.toLowerCase()}…`)}
-              className="h-full w-full rounded-[var(--radius-md)] p-3 text-left ring-1 ring-white/70 transition-transform hover:-translate-y-0.5 disabled:opacity-50"
+              className="flex h-full min-h-[92px] w-full flex-col justify-between rounded-[var(--radius-md)] p-3.5 text-left ring-1 ring-white/70 transition-transform hover:-translate-y-0.5 disabled:opacity-50"
               style={{ background: `linear-gradient(135deg, ${TRAIL_COLORS[i % 5]}40, ${TRAIL_COLORS[(i + 1) % 5]}30)` }}
             >
-              <span className="block font-serif text-[16px] leading-tight text-aubergine">{p.label}</span>
-              <span className="mt-1 block text-[11.5px] leading-snug text-plum/80">{p.hint}</span>
+              <span className="block font-serif text-[17px] leading-tight text-aubergine">{p.label}</span>
+              <span className="mt-2 block text-[11.5px] leading-snug text-plum/80">{p.hint}</span>
             </button>
           </li>
         ))}
       </ul>
       {savedTrails.length > 0 && (
         <>
-          <p className="mt-5 px-1 text-[11.5px] font-semibold uppercase tracking-[0.12em] text-ink-faint">Saved trails</p>
+          <p className="mt-7 text-[11.5px] font-semibold uppercase tracking-[0.12em] text-ink-faint">Saved trails</p>
           <ul className="mt-2 space-y-1.5">
             {savedTrails.map(({ trail: t, savedAt }) => (
               <li key={t.id} className="flex items-center gap-2 rounded-[var(--radius-md)] bg-white/70 p-2.5 ring-1 ring-line">

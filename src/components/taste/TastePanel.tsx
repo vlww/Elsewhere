@@ -7,7 +7,11 @@ import type { CulturalEntity } from "@/types";
 import { Button, Chip, cx } from "@/components/ui/primitives";
 import { entityKindLabel } from "./entityLabels";
 
-const SUGGESTIONS = ["Sofia Coppola", "Phoebe Bridgers", "Haruki Murakami", "Wes Anderson", "Ryuichi Sakamoto", "MUJI"];
+/** A mix on purpose: everyday interests (Qloo tags) next to a few titles and names. */
+const SUGGESTIONS: { label: string; items: string[] }[] = [
+  { label: "Things you're into", items: ["Specialty coffee", "Vintage", "Live music", "Hiking", "Natural wine", "Architecture", "Vegan", "Board games"] },
+  { label: "Films, music, books & brands", items: ["Wes Anderson", "Haruki Murakami", "Phoebe Bridgers", "Studio Ghibli", "MUJI"] },
+];
 
 export function TastePanel() {
   const signals = useElsewhere((s) => s.tasteSignals);
@@ -38,10 +42,10 @@ export function TastePanel() {
     <section aria-label="Your interests" className="flex min-h-0 flex-1 flex-col">
       <div className="px-5 pb-2 pt-4">
         <h2 className="font-serif text-[26px] leading-none text-aubergine">
-          What you <em>love</em>
+          Your <em>Taste</em>
         </h2>
         <p className="mt-2 text-[13px] leading-relaxed text-ink-soft">
-          A few films, artists, authors or brands help Elsewhere notice places that might suit you. They nudge the ranking; they don&apos;t define you.
+          What you love. Films, brands, artists, and anything in between help Elsewhere notice places that might suit you.
         </p>
         {mode === "demo" && (
           <p className="mt-2 rounded-[var(--radius-md)] bg-butter/45 px-3 py-2 text-[12px] leading-snug text-[#6D5A1F] ring-1 ring-[#E8D27A]/50">
@@ -53,12 +57,12 @@ export function TastePanel() {
       <div className="space-y-3 px-4">
         <div className="flex items-center gap-2 rounded-full bg-white/85 py-1 pl-3.5 pr-1.5 ring-1 ring-line focus-within:ring-lilac/70">
           <Search size={15} className="text-ink-faint" aria-hidden />
-          <label htmlFor="taste-search" className="sr-only">Search films, artists, authors, brands</label>
+          <label htmlFor="taste-search" className="sr-only">Search for anything you love</label>
           <input
             id="taste-search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="A film, artist, author, brand…"
+            placeholder="Coffee, jazz, vintage, a film, an artist…"
             className="h-9 min-w-0 flex-1 bg-transparent text-sm text-aubergine outline-none placeholder:text-ink-faint"
           />
           {state === "loading" && <span className="shimmer-text pr-2 text-[12px]">Searching</span>}
@@ -104,15 +108,19 @@ export function TastePanel() {
         )}
 
         {!q && !signals.length && (
-          <div>
-            <p className="mb-1.5 px-1 text-[11.5px] text-ink-faint">Try one:</p>
-            <div className="flex flex-wrap gap-1.5">
-              {SUGGESTIONS.map((s) => (
-                <button key={s} onClick={() => setQ(s)} className="rounded-full bg-white/70 px-2.5 py-1 text-[12px] text-plum ring-1 ring-line hover:bg-white">
-                  {s}
-                </button>
-              ))}
-            </div>
+          <div className="space-y-3">
+            {SUGGESTIONS.map((g) => (
+              <div key={g.label}>
+                <p className="mb-1.5 px-1 text-[11.5px] text-ink-faint">{g.label}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {g.items.map((s) => (
+                    <button key={s} onClick={() => setQ(s)} className="rounded-full bg-white/70 px-2.5 py-1 text-[12px] text-plum ring-1 ring-line hover:bg-white">
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -152,7 +160,7 @@ export function TastePanel() {
               setPanel("results");
             }}
           >
-            See taste-aware results
+            See places for your taste
           </Button>
         )}
       </div>

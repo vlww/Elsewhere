@@ -487,9 +487,7 @@ export async function planTrail(rawSpec: Partial<TrailSpec>, ctx: TrailContext):
     );
   }
   const unfilled = slotsList.filter((_, i) => !picks[i]);
-  const trail = await assemble({ built, spec, slots: slotsList, pool, ctx, result, useTaste, fixedOrder: spec.keepOrder, unfilled });
-  trail.changeNote = `Planned ${trail.stops.length} stops: ${trail.stops.map((s) => s.place.name).join(" → ")}.`;
-  return trail;
+  return assemble({ built, spec, slots: slotsList, pool, ctx, result, useTaste, fixedOrder: spec.keepOrder, unfilled });
 }
 
 export async function reviseTrail(trail: TasteTrail, edits: TrailEdit[], patch: TrailPatch, ctx: TrailContext): Promise<TasteTrail> {

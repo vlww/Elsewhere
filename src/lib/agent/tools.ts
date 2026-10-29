@@ -106,7 +106,7 @@ const DESCRIPTIONS: Record<ToolName, string> = {
   search_places:
     "Search real places around the current location and rank them. Omitted fields keep the session's current constraints; set reset=true to start from defaults. Results appear on the map and in the results panel. Returns the top candidates with ids, practical facts, cultural evidence, and both practical and taste-aware ranks.",
   find_cultural_entities:
-    "Look up films, artists, authors, brands, shows etc. by name to use as taste signals. Returns candidate entities with ids and disambiguation. The UI shows them as choices to the user.",
+    "Look up taste signals by name: films, artists, authors, brands, shows, and general interests (cuisines, vibes, hobbies, music genres — returned as Qloo tags). Returns candidate entities with ids and disambiguation. The UI shows them as choices to the user.",
   add_taste_signal:
     "Add a cultural entity (id from find_cultural_entities) to the user's active interests for this session. Use only for an obvious single match or one the user picked.",
   remove_taste_signal: "Remove an interest from the active taste signals.",

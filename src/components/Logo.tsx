@@ -1,39 +1,38 @@
 import { useId } from "react";
 
-/** Dark orange → sunset rose → dark purple, shared by the mark and the wordmark. */
-const SUNSET = ["#C2410C", "#E2531F", "#D9467A", "#8B2F8F", "#3F1C5C"];
+/** Orange → sunset rose → dark purple, shared by the mark and the wordmark. */
+const SUNSET = ["#F97316", "#F0563A", "#E0457B", "#8B2F8F", "#3F1C5C"];
 
-/** A sun setting into banded water: the half sun is cut by horizon stripes, with short rays above. */
+/**
+ * A full retro sun. An E is carved out of it: its arms are the horizon stripes of an 80s sunset, running
+ * out through the open right side, and below it the stripes keep going, thickening as the sun fades out.
+ */
 function SunsetMark({ size = 30 }: { size?: number }) {
   const id = useId().replace(/:/g, "");
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden className="shrink-0">
       <defs>
         <linearGradient id={`${id}-sun`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#F7B267" />
-          <stop offset="0.45" stopColor={SUNSET[1]} />
-          <stop offset="1" stopColor={SUNSET[2]} />
-        </linearGradient>
-        <linearGradient id={`${id}-ray`} x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0" stopColor={SUNSET[0]} />
+          <stop offset="0" stopColor="#FFC94D" />
+          <stop offset="0.35" stopColor={SUNSET[0]} />
+          <stop offset="0.68" stopColor={SUNSET[2]} />
           <stop offset="1" stopColor={SUNSET[3]} />
         </linearGradient>
-        <mask id={`${id}-bands`}>
+        <mask id={`${id}-carve`}>
           <rect width="32" height="32" fill="#fff" />
-          <rect x="0" y="19.2" width="32" height="1.6" fill="#000" />
-          <rect x="0" y="22.6" width="32" height="1.3" fill="#000" />
-          <rect x="0" y="25.6" width="32" height="1" fill="#000" />
+          <g fill="#000">
+            {/* The E: spine, then three arms that thicken downward like sunset stripes. */}
+            <rect x="9.6" y="7" width="2.6" height="15" />
+            <rect x="9.6" y="7" width="23" height="2.1" />
+            <rect x="9.6" y="13.25" width="23" height="2.35" />
+            <rect x="9.6" y="19.4" width="23" height="2.6" />
+            {/* The fade below. */}
+            <rect x="0" y="24.6" width="32" height="1.5" />
+            <rect x="0" y="27.5" width="32" height="2.2" />
+          </g>
         </mask>
       </defs>
-      <g stroke={`url(#${id}-ray)`} strokeWidth="1.8" strokeLinecap="round">
-        <line x1="16" y1="2.5" x2="16" y2="5.5" />
-        <line x1="6.3" y1="6.6" x2="8.4" y2="8.7" />
-        <line x1="25.7" y1="6.6" x2="23.6" y2="8.7" />
-        <line x1="2.4" y1="15.6" x2="5.3" y2="15.6" />
-        <line x1="29.6" y1="15.6" x2="26.7" y2="15.6" />
-      </g>
-      <path d="M5 27.5 A11 11 0 0 1 27 27.5 Z" fill={`url(#${id}-sun)`} mask={`url(#${id}-bands)`} transform="translate(0 -1.5)" />
-      <line x1="3.5" y1="28.6" x2="28.5" y2="28.6" stroke={SUNSET[4]} strokeWidth="1.8" strokeLinecap="round" />
+      <circle cx="16" cy="16" r="14.2" fill={`url(#${id}-sun)`} mask={`url(#${id}-carve)`} />
     </svg>
   );
 }
@@ -46,7 +45,7 @@ export function Logo() {
       <h1
         className="font-serif text-[29px] leading-none tracking-[0.005em]"
         style={{
-          backgroundImage: `linear-gradient(100deg, ${SUNSET[0]} 0%, ${SUNSET[1]} 22%, ${SUNSET[2]} 48%, ${SUNSET[3]} 74%, ${SUNSET[4]} 100%)`,
+          backgroundImage: `linear-gradient(100deg, ${SUNSET[0]} 0%, ${SUNSET[1]} 25%, ${SUNSET[2]} 50%, ${SUNSET[3]} 76%, ${SUNSET[4]} 100%)`,
           WebkitBackgroundClip: "text",
           backgroundClip: "text",
           WebkitTextFillColor: "transparent",

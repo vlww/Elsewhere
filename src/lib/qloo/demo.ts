@@ -42,6 +42,15 @@ export const DEMO_ENTITIES: DemoEntity[] = [
   { id: "demo:aesop", name: "Aesop", type: "urn:entity:brand", disambiguation: "Skincare brand", aliases: [], facets: { design: 0.9, craft: 0.6, quiet: 0.5, art: 0.3 } },
   { id: "demo:patagonia", name: "Patagonia", type: "urn:entity:brand", disambiguation: "Outdoor apparel brand", aliases: [], facets: { nature: 1, social: 0.3, craft: 0.3 } },
   { id: "demo:criterion", name: "The Criterion Collection", type: "urn:entity:brand", disambiguation: "Film distributor", aliases: ["criterion"], facets: { cinematic: 1, art: 0.6, nostalgic: 0.5, literary: 0.3 } },
+  // Everyday interests (live mode resolves these to Qloo tags).
+  { id: "demo:specialty-coffee", name: "Specialty coffee", type: "urn:tag:specialty_dish:place", disambiguation: "Food & drink", aliases: ["coffee", "espresso"], facets: { craft: 1, social: 0.5, design: 0.3 } },
+  { id: "demo:vintage", name: "Vintage", type: "urn:tag:decor:qloo", disambiguation: "Vibe", aliases: ["thrift", "retro"], facets: { nostalgic: 1, design: 0.6, craft: 0.4 } },
+  { id: "demo:live-music", name: "Live music", type: "urn:tag:good_for:qloo", disambiguation: "Activity", aliases: ["gigs", "concerts", "jazz"], facets: { music: 1, social: 0.8 } },
+  { id: "demo:hiking", name: "Hiking", type: "urn:tag:activities:place", disambiguation: "Activity", aliases: ["outdoors", "walking"], facets: { nature: 1, quiet: 0.4 } },
+  { id: "demo:natural-wine", name: "Natural wine", type: "urn:tag:cuisine:qloo", disambiguation: "Food & drink", aliases: ["wine"], facets: { social: 0.8, craft: 0.7, design: 0.3 } },
+  { id: "demo:architecture", name: "Architecture", type: "urn:tag:category:place", disambiguation: "Kind of place", aliases: ["buildings"], facets: { design: 1, art: 0.6, nostalgic: 0.3 } },
+  { id: "demo:board-games", name: "Board games", type: "urn:tag:good_for:qloo", disambiguation: "Activity", aliases: ["games"], facets: { social: 1, craft: 0.3, nostalgic: 0.3 } },
+  { id: "demo:vegan", name: "Vegan", type: "urn:tag:dietary_option:qloo", disambiguation: "Food & drink", aliases: ["plant based", "vegetarian"], facets: { craft: 0.6, nature: 0.5, social: 0.4 } },
 ];
 
 function placeFacets(p: Place): FacetVec {
