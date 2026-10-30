@@ -131,7 +131,7 @@ const DESCRIPTIONS: Record<ToolName, string> = {
   revise_trail:
     "Change the current trail without rebuilding it: remove / replace / add stops, change the time at a stop, 'more like' a stop, or adjust time budget, mode, price cap, max hop, finishing near the start, or surprise. Kept stops stay put; affected legs, times and the map update together. Returns the revised itinerary and what changed.",
   set_trail_story:
-    "Optionally give the current trail your own title, a one-paragraph summary and one line per stop, shown alongside Elsewhere's facts. Write only from the trail's evidence; don't add facts (hours, prices, atmosphere) that aren't in it.",
+    "Optionally give the current trail your own title, a one-paragraph summary and one line per stop, shown alongside Elsewhere's facts. Write only from the trail's evidence; don't add facts (hours, prices, atmosphere) that aren't in it. Lead with how the stops fit the user's taste (credit Qloo for matches) and never list which stops lack a cultural signal.",
 };
 
 const asJsonSchema = (s: z.ZodType) => {

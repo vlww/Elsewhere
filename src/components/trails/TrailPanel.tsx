@@ -85,7 +85,7 @@ function EmptyTrail() {
         <em>Taste</em> Trails
       </h2>
       <p className="mt-2 text-[13.5px] leading-relaxed text-ink-soft">
-        A few places, one outing. Build a short route around a mood, interest, or free afternoon.
+        A few places, one outing. Qloo matches places to your taste, and Elsewhere routes them into a short trail around a mood, interest, or free afternoon.
       </p>
       {agentReady && (
         <button
@@ -205,7 +205,7 @@ function Itinerary({ trail }: { trail: TasteTrail }) {
           {trail.cultural.mode !== "off" && trail.cultural.matchedStops > 0 && (
             <li>
               <Chip tone={trail.cultural.mode === "demo" ? "demo" : "taste"} className="py-1">
-                <Sparkles size={11} /> {trail.cultural.matchedStops} via {trail.cultural.mode === "demo" ? "simulated taste" : "Qloo"}
+                <Sparkles size={11} /> {trail.cultural.matchedStops} {trail.cultural.mode === "demo" ? "simulated taste" : "Qloo taste"} {trail.cultural.matchedStops === 1 ? "match" : "matches"}
               </Chip>
             </li>
           )}
@@ -265,7 +265,7 @@ function Itinerary({ trail }: { trail: TasteTrail }) {
             aria-expanded={showNotes}
             className="mt-4 flex w-full items-center gap-1.5 px-1 text-left text-[12px] font-semibold text-plum"
           >
-            <Info size={13} /> What&apos;s estimated, assumed or unknown ({trail.assumptions.length})
+            <Info size={13} /> Planning notes ({trail.assumptions.length})
             <ChevronDown size={13} className={cx("ml-auto transition-transform", showNotes && "rotate-180")} />
           </button>
           {showNotes && (
@@ -279,10 +279,8 @@ function Itinerary({ trail }: { trail: TasteTrail }) {
             </ul>
           )}
           <p className="mt-3 px-1 text-[10.5px] leading-snug text-ink-faint">
-            Routes: {trail.routing.provider}
-            {trail.routing.live ? "" : " (unavailable, estimates shown)"}. Places: listed by their providers. Cultural fit:{" "}
-            {trail.cultural.mode === "live" ? "Qloo Insights" : trail.cultural.mode === "demo" ? "simulated (demo mode)" : "not used"}. The order, timings and
-            stays are Elsewhere&apos;s plan{trail.story ? "; the trail's title and notes were written by the guide from this evidence" : ""}.
+            {trail.cultural.mode === "live" ? "Taste matching by Qloo Insights. " : trail.cultural.mode === "demo" ? "Taste matching simulated (demo mode). " : ""}Routes: {trail.routing.provider}
+            {trail.routing.live ? "" : " (unavailable, estimates shown)"}. Stops, order and timings planned by Elsewhere around your taste.
           </p>
           <button onClick={clearTrail} className="mt-3 inline-flex items-center gap-1.5 px-1 text-[12px] font-medium text-rose-deep hover:underline">
             <RefreshCw size={12} /> Start over
@@ -414,9 +412,6 @@ function StopCard({ trail, stop, i, active, onSelect }: { trail: TasteTrail; sto
             <p className="flex gap-1.5 rounded-[12px] bg-lavender/45 px-2.5 py-1.5 text-[12px] leading-snug text-[#4B3B80]">
               <Sparkles size={12} className="mt-0.5 shrink-0" /> {stop.culturalRationale}
             </p>
-          )}
-          {!stop.culturalRationale && trail.cultural.mode !== "off" && (
-            <p className="text-[11.5px] text-ink-faint">No cultural signal for this place. It&apos;s here for practical fit.</p>
           )}
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[12px]">
             <dt className="text-ink-faint">Hours</dt>

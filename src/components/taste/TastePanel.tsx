@@ -93,7 +93,7 @@ export function TastePanel() {
           Your <em>Taste</em>
         </h2>
         <p className="mt-2 text-[13px] leading-relaxed text-ink-soft">
-          Every aspect of your style. Pick the vibes you&apos;re drawn to, or add films, brands, artists and anything in between.
+          Every aspect of your style. Pick the vibes you&apos;re drawn to, or add films, brands, artists and anything in between. Qloo&apos;s taste AI connects them to real places.
         </p>
         {mode === "demo" && (
           <p className="mt-2 rounded-[var(--radius-md)] bg-butter/45 px-3 py-2 text-[12px] leading-snug text-[#6D5A1F] ring-1 ring-[#E8D27A]/50">
@@ -146,7 +146,7 @@ export function TastePanel() {
               setQ(e.target.value);
               setOwn({ busy: false });
             }}
-            placeholder="A film, an artist, a brand, boba…"
+            placeholder="Search Qloo: a film, an artist, a brand…"
             className="h-9 min-w-0 flex-1 bg-transparent text-sm text-aubergine outline-none placeholder:text-ink-faint"
           />
           {state === "loading" && <span className="shimmer-text pr-2 text-[12px]">Searching</span>}

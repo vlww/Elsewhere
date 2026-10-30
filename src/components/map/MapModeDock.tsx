@@ -116,7 +116,7 @@ function TasteLegend({ highlights, matched, compact }: { highlights: TasteHighli
     body = (
       <>
         <p>
-          Lighting up the <span className="font-semibold text-aubergine">{highlights.length}</span> strongest
+          {demo ? "Lighting" : "Qloo is lighting"} up the <span className="font-semibold text-aubergine">{highlights.length}</span> strongest
           {matched > highlights.length ? <> of {matched}</> : null} places that line up with your interests
           {strong ? <> (<span className="font-semibold text-aubergine">{strong}</span> standouts)</> : null}.
         </p>
@@ -146,11 +146,9 @@ function TasteLegend({ highlights, matched, compact }: { highlights: TasteHighli
               </span>
             </div>
             <p className="mt-2 text-[10.5px] leading-snug text-ink-faint">
-              {mapMode === "immersive"
-                ? "Coloured buildings are stylised illustrations on real OpenStreetMap footprints, not exact architecture. Where none is mapped, a small pavilion marks the spot."
-                : "Tinted outlines are the real buildings these places are in (OpenStreetMap)."}{" "}
-              Each place&apos;s colour comes from its own photo, softened to a pastel.{" "}
-              {demo ? "Simulated in demo mode, not Qloo results." : "Matches come from Qloo Insights affinity for these places."}
+              {demo ? "Matches are simulated in demo mode." : "Matches come from Qloo Insights taste affinity for these places."}{" "}
+              {mapMode === "immersive" ? "Buildings are drawn on real OpenStreetMap footprints." : "Tinted outlines are the real buildings these places are in."}{" "}
+              Each place&apos;s colour comes from its own photo.
             </p>
           </>
         )}

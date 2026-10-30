@@ -136,7 +136,7 @@ export function PlaceDetail() {
                 <PracticalList items={rec.practical} />
               </div>
               <div className="mt-2.5 rounded-[var(--radius-lg)] bg-gradient-to-br from-lavender/35 to-sunset/20 p-4 ring-1 ring-lilac/25">
-                <h4 className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5A4791]/80">Cultural fit</h4>
+                <h4 className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5A4791]/80">Taste fit · Qloo</h4>
                 <CulturalBlock ev={rec.cultural} />
               </div>
               {rec.tradeoffs.length > 0 && (
@@ -154,7 +154,7 @@ export function PlaceDetail() {
                 <div className="mt-3">
                   <ScoreBars score={tasteOn ? rec.tasteScore : rec.practicalScore} />
                   <p className="mt-2 text-[11.5px] text-ink-faint">
-                    Rank {rec.practicalRank} practical · rank {rec.tasteRank} taste-aware.
+                    Rank {rec.practicalRank} practical · rank {rec.tasteRank} with Qloo taste.
                   </p>
                 </div>
               </details>

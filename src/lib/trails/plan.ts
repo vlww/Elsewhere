@@ -492,8 +492,8 @@ async function assemble(args: {
   for (const slot of args.unfilled)
     assumptions.push(`Couldn't find a ${slot.cats.map((c) => CATEGORY_LABEL[c].toLowerCase()).join(" or ")} that fits; the trail goes without it.`);
   if (args.useTaste && ctx.tasteSignals.length) {
-    const without = stops.filter((s) => !s.rec.cultural).map((s) => s.place.name);
-    if (without.length && without.length < stops.length) assumptions.push(`${without.join(", ")} ${without.length === 1 ? "was" : "were"} chosen on practical fit; there's no cultural signal for ${without.length === 1 ? "it" : "them"}.`);
+    const matched = stops.filter((s) => s.rec.cultural).length;
+    if (matched) assumptions.push(`Qloo matched ${matched} of ${stops.length} stops to your taste.`);
     if (result.taste.status === "error") assumptions.push(`Cultural matching failed (${result.taste.message ?? "Qloo error"}), so stops are chosen on practical fit.`);
   }
   if (routing.info.note) assumptions.push(routing.info.note);

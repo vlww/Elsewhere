@@ -37,7 +37,7 @@ export function CulturalBlock({ ev }: { ev?: CulturalEvidence }) {
   if (!ev) {
     return (
       <p className="text-[13px] leading-snug text-ink-soft">
-        No cultural signal for this place. With interests active, it ranks on practical fit alone.
+        Qloo hasn&apos;t linked this place to your interests, so it&apos;s ranked on distance, hours and amenities.
       </p>
     );
   }
@@ -81,7 +81,7 @@ const FACTOR_LABEL: Record<keyof ScoreBreakdown["weights"], string> = {
   activity: "Fit for the plan",
   proximity: "Closeness",
   attributes: "Listed hours & amenities",
-  cultural: "Cultural signal",
+  cultural: "Qloo taste affinity",
   feedback: "Your feedback",
 };
 
@@ -103,7 +103,7 @@ export function ScoreBars({ score }: { score: ScoreBreakdown }) {
         ))}
       </ul>
       <p className="mt-2 text-[11px] leading-snug text-ink-faint">
-        Elsewhere&apos;s estimate: a weighted sum of these factors ({score.total.toFixed(2)}). Not a Qloo score.
+        Overall score {score.total.toFixed(2)}{score.weights.cultural > 0 ? ", blending Qloo taste affinity with practical fit" : ""}.
       </p>
     </div>
   );

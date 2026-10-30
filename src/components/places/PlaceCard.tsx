@@ -89,7 +89,7 @@ export function PlaceCard({ rec, index, movement, showAddress = false }: { rec: 
             {tasteOn && rec.cultural && (
               <Chip tone={rec.cultural.provenance === "demo" ? "demo" : "taste"}>
                 <Sparkles size={10} />
-                {topContributor ? `via ${topContributor.entityName}` : "Cultural signal"}
+                {topContributor ? `via ${topContributor.entityName}` : rec.cultural.provenance === "demo" ? "Taste match" : "Qloo match"}
               </Chip>
             )}
           </div>
