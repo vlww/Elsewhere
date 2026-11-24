@@ -85,7 +85,7 @@ function EmptyTrail() {
         <em>Taste</em> Trails
       </h2>
       <p className="mt-2 text-[13.5px] leading-relaxed text-ink-soft">
-        A few places, one outing. Qloo matches places to your taste, and Elsewhere routes them into a short trail around a mood, interest, or free afternoon.
+        A few places, one outing. The Taste Engine matches places to your taste, and Elsewhere routes them into a short trail around a mood, interest, or free afternoon.
       </p>
       {agentReady && (
         <button
@@ -204,8 +204,8 @@ function Itinerary({ trail }: { trail: TasteTrail }) {
           <li className="inline-flex items-center gap-1 rounded-full bg-white/75 px-2.5 py-1 text-plum ring-1 ring-white">{trail.stops.length} stops</li>
           {trail.cultural.mode !== "off" && trail.cultural.matchedStops > 0 && (
             <li>
-              <Chip tone={trail.cultural.mode === "demo" ? "demo" : "taste"} className="py-1">
-                <Sparkles size={11} /> {trail.cultural.matchedStops} {trail.cultural.mode === "demo" ? "simulated taste" : "Qloo taste"} {trail.cultural.matchedStops === 1 ? "match" : "matches"}
+              <Chip tone="taste" className="py-1">
+                <Sparkles size={11} /> {trail.cultural.matchedStops} taste {trail.cultural.matchedStops === 1 ? "match" : "matches"}
               </Chip>
             </li>
           )}
@@ -279,7 +279,7 @@ function Itinerary({ trail }: { trail: TasteTrail }) {
             </ul>
           )}
           <p className="mt-3 px-1 text-[10.5px] leading-snug text-ink-faint">
-            {trail.cultural.mode === "live" ? "Taste matching by Qloo Insights. " : trail.cultural.mode === "demo" ? "Taste matching simulated (demo mode). " : ""}Routes: {trail.routing.provider}
+            {trail.cultural.mode === "ai" ? "Taste matching by the Elsewhere Taste Engine with Claude. " : trail.cultural.mode === "built-in" ? "Taste matching by the Elsewhere Taste Engine (built-in profiles). " : ""}Routes: {trail.routing.provider}
             {trail.routing.live ? "" : " (unavailable, estimates shown)"}. Stops, order and timings planned by Elsewhere around your taste.
           </p>
           <button onClick={clearTrail} className="mt-3 inline-flex items-center gap-1.5 px-1 text-[12px] font-medium text-rose-deep hover:underline">

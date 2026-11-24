@@ -2,13 +2,13 @@ import { z } from "zod";
 import type Anthropic from "@anthropic-ai/sdk";
 import { geocode } from "@/lib/places/geocode";
 import { ProviderError } from "@/lib/places";
-import { entityTypeLabel, QlooError, resolveEntities, tasteMode } from "@/lib/qloo";
-import { interpretInterest } from "@/lib/qloo/interpret";
+import { entityTypeLabel, interpretInterest, resolveEntities, tasteMode } from "@/lib/taste/engine";
 import { CATEGORY_LABEL } from "@/lib/recommendations/activities";
 import { runSearch } from "@/lib/recommendations/pipeline";
 import { planTrail, reviseTrail, TrailEditSchema, TrailError, type TrailContext } from "@/lib/trails/plan";
 import { fmtDuration } from "@/lib/trails/narrative";
 import { tasteHighlights } from "@/lib/taste/highlights";
+import { FACET_LABEL, topFacets } from "@/lib/taste/facets";
 import {
   ACTIVITIES,
   PLACE_CATEGORIES,
@@ -43,7 +43,7 @@ const inputs = {
     use_taste: z.boolean().optional(),
     reset: z.boolean().optional(),
   }),
-  find_cultural_entities: z.object({ query: z.string().min(2).max(120), types: z.array(z.string()).max(6).optional() }),
+  find_cultural_entities: z.object({ query: z.string().min(2).max(120) }),
   add_taste_signal: z.object({ entity_id: z.string().min(1).max(120) }),
   remove_taste_signal: z.object({ entity_id: z.string().min(1).max(120) }),
   set_lens: z.object({ mode: z.enum(["practical", "taste"]) }),
@@ -114,7 +114,7 @@ const DESCRIPTIONS: Record<ToolName, string> = {
   search_places:
     "Search real places around the current location and rank them. Omitted fields keep the session's current constraints; set reset=true to start from defaults. Results appear on the map and in the results panel. Returns the top candidates with ids, practical facts, cultural evidence, and both practical and taste-aware ranks.",
   find_cultural_entities:
-    "Look up taste signals by name: films, artists, authors, brands, shows, and general interests (cuisines, vibes, hobbies, music genres, returned as Qloo tags). Returns candidate entities with ids and disambiguation. The UI shows them as choices to the user.",
+    "Look up taste signals by name: films, artists, authors, brands, shows, and general interests (cuisines, vibes, hobbies, music genres). The Taste Engine profiles each candidate (Claude reads it into taste facets, or the built-in lexicon knows it). Returns candidates with ids, disambiguation and their strongest facets. The UI shows them as choices to the user.",
   add_taste_signal:
     "Add a cultural entity (id from find_cultural_entities) to the user's active interests for this session. Use only for an obvious single match or one the user picked.",
   remove_taste_signal: "Remove an interest from the active taste signals.",
@@ -127,11 +127,11 @@ const DESCRIPTIONS: Record<ToolName, string> = {
   unsave_place: "Remove a place from the Saved list.",
   compare_places: "Open a side-by-side comparison of 2–3 places from the current results and return their differences.",
   plan_trail:
-    "Plan a Taste Trail: a routed, timed outing through 2–5 real places, drawn on the map with a full itinerary panel. Translate the request into structure: ordered stops (kinds of place), time budget, mode, price cap, max hop, mood words. Uses active interests via Qloo, the place provider, OSRM routing and listed hours. Returns the itinerary with per-stop evidence, legs, timings and assumptions. Replaces any current trail.",
+    "Plan a Taste Trail: a routed, timed outing through 2–5 real places, drawn on the map with a full itinerary panel. Translate the request into structure: ordered stops (kinds of place), time budget, mode, price cap, max hop, mood words. Uses active interests via the Taste Engine, the place provider, OSRM routing and listed hours. Returns the itinerary with per-stop evidence, legs, timings and assumptions. Replaces any current trail.",
   revise_trail:
     "Change the current trail without rebuilding it: remove / replace / add stops, change the time at a stop, 'more like' a stop, or adjust time budget, mode, price cap, max hop, finishing near the start, or surprise. Kept stops stay put; affected legs, times and the map update together. Returns the revised itinerary and what changed.",
   set_trail_story:
-    "Optionally give the current trail your own title, a one-paragraph summary and one line per stop, shown alongside Elsewhere's facts. Write only from the trail's evidence; don't add facts (hours, prices, atmosphere) that aren't in it. Lead with how the stops fit the user's taste (credit Qloo for matches) and never list which stops lack a cultural signal.",
+    "Optionally give the current trail your own title, a one-paragraph summary and one line per stop, shown alongside Elsewhere's facts. Write only from the trail's evidence; don't add facts (hours, prices, atmosphere) that aren't in it. Lead with how the stops fit the user's taste (name the shared facets or listing words from the evidence) and never list which stops lack a cultural signal.",
 };
 
 const asJsonSchema = (s: z.ZodType) => {
@@ -170,6 +170,8 @@ export interface ToolContext {
   status: (label: string) => void;
 }
 
+const topFacetLabels = (e: CulturalEntity) => topFacets(e.profile?.facets ?? {}).map((f) => FACET_LABEL[f]);
+
 const lensOrder = (r: SearchResult, lens: "practical" | "taste") =>
   [...r.recommendations].sort((a, b) => (lens === "taste" ? a.tasteRank - b.tasteRank : a.practicalRank - b.practicalRank));
 
@@ -190,7 +192,9 @@ function compactRec(r: Recommendation, lens: "practical" | "taste") {
           provenance: r.cultural.provenance,
           affinity: r.cultural.affinity !== undefined ? Number(r.cultural.affinity.toFixed(3)) : undefined,
           contributors: r.cultural.contributions.map((c) => `${c.entityName} (${c.score.toFixed(2)})`),
-          qloo_tags: r.cultural.qlooTags.slice(0, 4),
+          shared_facets: r.cultural.facets,
+          listing_mentions: r.cultural.keywords,
+          why: r.cultural.note,
         }
       : null,
     tradeoffs: r.tradeoffs,
@@ -209,12 +213,13 @@ function highlightSummary(result: SearchResult, signals: CulturalEntity[]) {
       name: h.name,
       category: CATEGORY_LABEL[h.category],
       tier: h.tier,
-      top_contributor: h.entityName ?? "not broken down by Qloo",
+      top_contributor: h.entityName ?? "several interests",
+      why: h.why,
       provenance: h.provenance,
       match: h.match,
     })),
     basis:
-      "Highlighted = the strongest places carrying cultural evidence (Qloo Insights affinity in live mode, simulated in demo), at most 14. 'strong' = roughly the top quarter by affinity among these results. Colours only key which interest contributed most.",
+      "Highlighted = the strongest Taste Engine matches (place profile close to an interest's profile, or the listing names something the interest is about), at most 14. 'strong' = roughly the top quarter by affinity among these results. Colours only key which interest contributed most.",
   };
 }
 
@@ -243,7 +248,7 @@ function compactTrail(t: TasteTrail) {
       price: s.place.priceLevel ? "$".repeat(s.place.priceLevel) : "not listed",
       address: s.place.address ?? "not listed",
       cultural: s.culturalRationale ?? null,
-      qloo_tags: s.rec.cultural?.qlooTags.slice(0, 4) ?? [],
+      shared_facets: s.rec.cultural?.facets ?? [],
     })),
     back_to_start: t.legOut ? { minutes: t.legOut.durationMin } : undefined,
     assumptions: t.assumptions,
@@ -346,8 +351,8 @@ export async function executeTool(name: string, rawInput: unknown, ctx: ToolCont
     case "find_cultural_entities": {
       try {
         const query = input.query as string;
-        const entities = await resolveEntities(query, input.types as string[] | undefined);
-        // Nothing named like that: offer the interest in the user's own words, translated for Qloo.
+        const entities = await resolveEntities(query);
+        // Nothing named like that: offer the interest in the user's own words, profiled as typed.
         if (!entities.some((e) => e.name.toLowerCase() === query.trim().toLowerCase())) {
           const own = await interpretInterest(query).catch(() => null);
           if (own && !entities.some((e) => e.id === own.id)) entities.unshift(own);
@@ -356,11 +361,12 @@ export async function executeTool(name: string, rawInput: unknown, ctx: ToolCont
         ctx.emit({ type: "entity_choices", query, entities });
         return {
           mode: tasteMode(),
-          candidates: entities.map((e) => ({ id: e.id, name: e.name, kind: entityTypeLabel(e.type), about: e.disambiguation })),
+          candidates: entities.map((e) => ({ id: e.id, name: e.name, kind: entityTypeLabel(e.type), about: e.disambiguation, profiled_by: e.provenance === "ai" ? "Claude" : "built-in lexicon", leans: topFacetLabels(e) })),
           note: entities.length ? undefined : "No matches. Tell the user and suggest a different spelling or a related reference.",
         };
       } catch (e) {
-        return err(e instanceof QlooError ? `Qloo lookup failed (${e.kind}).` : "Lookup failed.");
+        console.warn("[find_cultural_entities]", (e as Error).message);
+        return err("Lookup failed.");
       }
     }
 

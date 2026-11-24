@@ -5,7 +5,7 @@ import { dominantHue, pastelFromHue, type PlaceColor } from "@/lib/taste/placeCo
 
 /**
  * Dominant photo colours for Taste Layer highlights. Only fetches from the image sources the app itself
- * uses (Google Places photos via our proxy, Qloo's image CDN, Wikimedia Commons), never arbitrary URLs.
+ * uses (Google Places photos via our proxy, Wikimedia Commons), never arbitrary URLs.
  */
 
 const Body = z.object({
@@ -24,7 +24,7 @@ function sourceUrl(imageUrl: string): string | null {
   try {
     const u = new URL(imageUrl);
     if (u.protocol !== "https:") return null;
-    return ["images.qloo.com", "upload.wikimedia.org", "commons.wikimedia.org"].includes(u.hostname) ? u.toString() : null;
+    return ["upload.wikimedia.org", "commons.wikimedia.org"].includes(u.hostname) ? u.toString() : null;
   } catch {
     return null;
   }

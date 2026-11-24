@@ -25,7 +25,7 @@ export const PLACE_CATEGORIES = [
 export const PlaceCategory = z.enum(PLACE_CATEGORIES);
 export type PlaceCategory = z.infer<typeof PlaceCategory>;
 
-export const PlaceSource = z.enum(["osm", "google", "qloo", "demo-snapshot"]);
+export const PlaceSource = z.enum(["osm", "google", "demo-snapshot"]);
 export type PlaceSource = z.infer<typeof PlaceSource>;
 
 /** A tri-state for amenities: true/false only when a source states it. */
@@ -50,7 +50,7 @@ export const PlaceSchema = z.object({
   openingHoursRaw: z.string().optional(),
   /** Weekly hours as human-readable lines, when the provider supplies them. */
   openingHoursText: z.array(z.string()).optional(),
-  /** Who listed the hours, when not the place's own provider (e.g. "Qloo"). */
+  /** Who listed the hours, when not the place's own provider. */
   hoursSource: z.string().optional(),
   /** Provider-reported open-now status at fetch time (Google). */
   openNowReported: z.boolean().optional(),
@@ -71,32 +71,57 @@ export const PlaceSchema = z.object({
 export type Place = z.infer<typeof PlaceSchema>;
 
 // ---------------------------------------------------------------------------
-// Cultural entities (Qloo)
+// Taste: interests and their profiles (Elsewhere Taste Engine)
 // ---------------------------------------------------------------------------
 
-export const ENTITY_TYPES = [
-  "urn:entity:artist",
-  "urn:entity:movie",
-  "urn:entity:tv_show",
-  "urn:entity:book",
-  "urn:entity:brand",
-  "urn:entity:person",
-  "urn:entity:place",
-  "urn:entity:podcast",
-  "urn:entity:videogame",
-  "urn:entity:destination",
+/** The facets interests and places are both described with. See lib/taste/facets.ts. */
+export const FACETS = [
+  "quiet",
+  "cozy",
+  "literary",
+  "artsy",
+  "design",
+  "nature",
+  "cinematic",
+  "craft",
+  "social",
+  "lively",
+  "nostalgic",
+  "music",
+  "romantic",
+  "offbeat",
+  "heritage",
+  "foodie",
 ] as const;
+export const FacetSchema = z.enum(FACETS);
+export type Facet = z.infer<typeof FacetSchema>;
+
+export const TasteProfileSchema = z.object({
+  facets: z.partialRecord(FacetSchema, z.number().min(0).max(1)),
+  /** Words a matching listing might contain ("jazz", "vinyl", "matcha"); matched against names, tags and descriptions. */
+  keywords: z.array(z.string().max(40)).max(12).default([]),
+  /** Kinds of place someone with this interest tends to enjoy. */
+  categories: z.array(PlaceCategory).max(4).default([]),
+});
+export type TasteProfile = z.infer<typeof TasteProfileSchema>;
+
+/** "ai" = profiled by Claude from what was typed; "built-in" = Elsewhere's hand-written lexicon or word rules. */
+export const TasteProvenance = z.enum(["ai", "built-in"]);
+export type TasteProvenance = z.infer<typeof TasteProvenance>;
 
 export const CulturalEntitySchema = z.object({
   id: z.string(),
   name: z.string(),
-  type: z.string(), // urn:entity:*
+  /** What kind of interest: person, artist, film, food, activity, vibe… */
+  type: z.string(),
   disambiguation: z.string().optional(),
   imageUrl: z.string().optional(),
-  /** "live" = resolved via the Qloo API; "demo" = simulated fixture. */
-  provenance: z.enum(["live", "demo"]),
+  // Interests saved before the taste engine said "live" or "demo"; they're re-profiled by name.
+  provenance: z.preprocess((v) => (v === "ai" ? "ai" : "built-in"), TasteProvenance),
   /** Where it came from in this session. */
   origin: z.enum(["picked", "conversation", "saved"]).default("picked"),
+  /** Absent only for built-in interests (resolved from the lexicon on the server) and ones saved before profiles existed. */
+  profile: TasteProfileSchema.optional(),
 });
 export type CulturalEntity = z.infer<typeof CulturalEntitySchema>;
 
@@ -155,16 +180,21 @@ export interface PracticalEvidence {
 }
 
 export interface CulturalEvidence {
-  provenance: "live" | "demo";
-  /** Qloo affinity (0–1), as returned by the API. Never rescaled. */
+  /** "ai" when Claude profiled any contributing interest; "built-in" when only the lexicon and word rules did. */
+  provenance: TasteProvenance;
+  /** Taste Engine affinity (0–1): how closely this place's profile matches the interests. */
   affinity?: number;
-  /** Per-signal contributions from Qloo explainability (0–1) when returned. */
+  /** How much each interest contributed (shares that sum to 1). */
   contributions: { entityId: string; entityName: string; score: number }[];
-  /** How the Qloo result was tied to this place. */
-  match: "qloo-place" | "name-proximity" | "simulated";
-  qlooEntityId?: string;
-  qlooName?: string;
-  qlooTags: string[];
+  /** "listing" when the listing itself names something the interest is about (e.g. "jazz"); "profile" when only facets align. */
+  match: "listing" | "profile";
+  /** Facet labels the place and the leading interest share, strongest first ("bookish", "quiet"). */
+  facets: string[];
+  /** Interest keywords found in the listing. */
+  keywords: string[];
+  /** Who read the listing into facets: Claude (blended with the rules) or the rules alone. */
+  listingRead: "claude" | "rules";
+  /** One readable sentence explaining the match. */
   note?: string;
 }
 
@@ -213,7 +243,7 @@ export interface SearchResult {
   filteredOut: { placeId: string; name: string; reason: string }[];
   inventory: { provider: string; count: number; note?: string };
   taste: {
-    mode: "live" | "demo" | "off";
+    mode: TasteProvenance | "off";
     status: "ok" | "no-signals" | "error";
     message?: string;
     matched: number;
@@ -314,7 +344,7 @@ export interface TasteTrail {
   travelMin: number;
   stayMin: number;
   routing: { provider: string; live: boolean; effectiveMode: "walking" | "cycling" | "driving"; note?: string };
-  cultural: { mode: "live" | "demo" | "off"; status: "ok" | "no-signals" | "error"; matchedStops: number; message?: string };
+  cultural: { mode: TasteProvenance | "off"; status: "ok" | "no-signals" | "error"; matchedStops: number; message?: string };
   assumptions: string[];
   /** What the last plan or revision changed, in a sentence. */
   changeNote?: string;

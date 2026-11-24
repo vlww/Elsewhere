@@ -26,7 +26,7 @@ import type { TrailEdit, TrailPatch } from "@/lib/trails/plan";
 // ---------------------------------------------------------------------------
 
 export interface AppStatus {
-  taste: "live" | "demo";
+  taste: "ai" | "built-in";
   places: string[];
   agent: { model: string; configured: boolean };
   demoArea: { name: string; center: { lat: number; lon: number }; bbox: [number, number, number, number]; snapshotDate: string; license: string };
@@ -337,25 +337,25 @@ export const useElsewhere = create<State & Actions>()(
           } catch {
             /* status is informational */
           }
-          // Interests saved under the other taste mode (demo vs live) are looked up again by name.
-          const mode = get().status?.taste;
-          const stale = mode ? get().tasteSignals.filter((e) => e.provenance !== mode) : [];
+          // Interests saved before the Taste Engine (Qloo ids, no profile) are re-profiled by name, once.
+          const stale = get().tasteSignals.filter((e) => !e.profile && !e.id.startsWith("lx:"));
           if (!stale.length) return;
           const swaps = await Promise.all(
             stale.map(async (e) => {
               try {
-                const json = await (await fetch(`/api/entities?q=${encodeURIComponent(e.name)}`)).json();
-                const hit = (json.entities as CulturalEntity[] | undefined)?.find((x) => x.name.toLowerCase() === e.name.toLowerCase());
-                return [e.id, hit ? { ...hit, origin: e.origin } : null] as const;
+                const json = await (await fetch(`/api/entities?interpret=1&q=${encodeURIComponent(e.name)}`)).json();
+                const hit = json.entity as CulturalEntity | null | undefined;
+                return [e.id, hit ? { ...hit, name: e.name, origin: e.origin } : null] as const;
               } catch {
-                return [e.id, null] as const;
+                return [e.id, undefined] as const;
               }
             }),
           );
           const next = new Map(swaps);
           set({
             tasteSignals: get()
-              .tasteSignals.map((e) => (next.has(e.id) ? next.get(e.id) ?? e : e))
+              // null = couldn't be profiled (dropped); undefined = network trouble (kept for next time).
+              .tasteSignals.flatMap((e) => (!next.has(e.id) ? [e] : next.get(e.id) === null ? [] : [next.get(e.id) ?? e]))
               .filter((e, i, a) => a.findIndex((x) => x.id === e.id) === i),
           });
         },

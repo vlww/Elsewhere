@@ -64,9 +64,8 @@ export function culturalLine(ev: CulturalEvidence | undefined, interestNames: st
   const top = [...ev.contributions].sort((a, b) => b.score - a.score)[0];
   const who = top?.entityName ?? (interestNames.length === 1 ? interestNames[0] : undefined);
   const aff = ev.affinity !== undefined ? ` (affinity ${ev.affinity.toFixed(2)})` : "";
-  if (ev.provenance === "demo") return `Simulated in demo mode: leans toward ${who ?? "your interests"}${aff}.`;
-  const how = ev.match === "name-proximity" ? " Matched to this listing by name and location." : ev.match === "qloo-place" ? " Surfaced by Qloo." : "";
-  return `Qloo predicts affinity here among people who like ${who ?? "your interests"}${aff}.${how}`;
+  if (ev.note) return `${ev.note.replace(/\.$/, "")}${aff}.`;
+  return `Lines up with ${who ?? "your interests"}${aff}.`;
 }
 
 const OUTSIDE: PlaceCategory[] = ["park", "garden", "plaza"];

@@ -10,7 +10,7 @@ import { PlaceArt } from "./PlaceArt";
 import { CATEGORY_LABEL, CATEGORY_META } from "./categoryMeta";
 import { CulturalBlock, PracticalList, ScoreBars } from "./evidence";
 
-const SOURCE_LABEL = { osm: "OpenStreetMap", google: "Google Places", qloo: "Qloo", "demo-snapshot": "OpenStreetMap snapshot" } as const;
+const SOURCE_LABEL = { osm: "OpenStreetMap", google: "Google Places", "demo-snapshot": "OpenStreetMap snapshot" } as const;
 
 function Amenity({ label, v }: { label: string; v: Verified }) {
   return (
@@ -136,7 +136,7 @@ export function PlaceDetail() {
                 <PracticalList items={rec.practical} />
               </div>
               <div className="mt-2.5 rounded-[var(--radius-lg)] bg-gradient-to-br from-lavender/35 to-sunset/20 p-4 ring-1 ring-lilac/25">
-                <h4 className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5A4791]/80">Taste fit · Qloo</h4>
+                <h4 className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5A4791]/80">Taste fit</h4>
                 <CulturalBlock ev={rec.cultural} />
               </div>
               {rec.tradeoffs.length > 0 && (
@@ -154,7 +154,7 @@ export function PlaceDetail() {
                 <div className="mt-3">
                   <ScoreBars score={tasteOn ? rec.tasteScore : rec.practicalScore} />
                   <p className="mt-2 text-[11.5px] text-ink-faint">
-                    Rank {rec.practicalRank} practical · rank {rec.tasteRank} with Qloo taste.
+                    Rank {rec.practicalRank} practical · rank {rec.tasteRank} taste-aware.
                   </p>
                 </div>
               </details>

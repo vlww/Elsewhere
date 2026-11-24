@@ -81,7 +81,7 @@ function TasteLegend({ highlights, matched, compact }: { highlights: TasteHighli
   const colors = interestColors(used);
   const counts = new Map<string, number>();
   for (const h of highlights) if (h.entityId) counts.set(h.entityId, (counts.get(h.entityId) ?? 0) + 1);
-  const demo = highlights[0]?.provenance === "demo" || result?.taste.mode === "demo";
+  const demo = result?.taste.mode === "built-in";
   const strong = highlights.filter((h) => h.tier === "strong").length;
 
   let body: React.ReactNode;
@@ -109,14 +109,14 @@ function TasteLegend({ highlights, matched, compact }: { highlights: TasteHighli
       <p>
         {result.taste.status === "no-signals" && result.taste.message
           ? result.taste.message
-          : `${demo ? "The demo fixture" : "Qloo"} has no affinity signal for ${used.map((e) => e.name).join(", ") || "your interests"} among these ${result.recommendations.length} places. Try a wider radius or another interest.`}
+          : `The Taste Engine found no strong match for ${used.map((e) => e.name).join(", ") || "your interests"} among these ${result.recommendations.length} places. Try a wider radius or another interest.`}
       </p>
     );
   } else {
     body = (
       <>
         <p>
-          {demo ? "Lighting" : "Qloo is lighting"} up the <span className="font-semibold text-aubergine">{highlights.length}</span> strongest
+          Lighting up the <span className="font-semibold text-aubergine">{highlights.length}</span> strongest
           {matched > highlights.length ? <> of {matched}</> : null} places that line up with your interests
           {strong ? <> (<span className="font-semibold text-aubergine">{strong}</span> standouts)</> : null}.
         </p>
@@ -146,7 +146,9 @@ function TasteLegend({ highlights, matched, compact }: { highlights: TasteHighli
               </span>
             </div>
             <p className="mt-2 text-[10.5px] leading-snug text-ink-faint">
-              {demo ? "Matches are simulated in demo mode." : "Matches come from Qloo Insights taste affinity for these places."}{" "}
+              {demo
+                ? "Matches come from the Taste Engine's built-in profiles and each listing's own words."
+                : "Matches come from the Taste Engine: Claude profiles your interests and the listings, and places light up where the profiles overlap."}{" "}
               {mapMode === "immersive" ? "Buildings are drawn on real OpenStreetMap footprints." : "Tinted outlines are the real buildings these places are in."}{" "}
               Each place&apos;s colour comes from its own photo.
             </p>
@@ -164,7 +166,7 @@ function TasteLegend({ highlights, matched, compact }: { highlights: TasteHighli
       <div className="mb-1.5 flex items-center gap-1.5">
         <Sparkles size={13} className="text-rose-deep" />
         <h2 className="flex-1 text-[12px] font-semibold text-plum">Taste Layer</h2>
-        {signals.length > 0 && (demo ? <Chip tone="demo" className="px-2 py-0 text-[10.5px]">Simulated</Chip> : <Chip tone="taste" className="px-2 py-0 text-[10.5px]">Qloo</Chip>)}
+        {signals.length > 0 && (demo ? <Chip tone="demo" className="px-2 py-0 text-[10.5px]">Built-in</Chip> : <Chip tone="taste" className="px-2 py-0 text-[10.5px]">Taste Engine</Chip>)}
         {highlights.length > 0 && (
           <button
             onClick={() => setOpen((v) => !v)}

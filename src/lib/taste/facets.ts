@@ -1,31 +1,12 @@
-import { z } from "zod";
-import { PLACE_CATEGORIES } from "@/types";
+import { FACETS, type Facet } from "@/types";
 
 /**
  * The shared vocabulary of the Elsewhere Taste Engine. Interests (a director, a band, "cozy") and places
  * (a bookstore, a tea house) are both described as weights over these facets, so "why does Murakami lead
  * to this jazz bar?" always has a readable answer: they share the facets named in the explanation.
  */
-export const FACETS = [
-  "quiet",
-  "cozy",
-  "literary",
-  "artsy",
-  "design",
-  "nature",
-  "cinematic",
-  "craft",
-  "social",
-  "lively",
-  "nostalgic",
-  "music",
-  "romantic",
-  "offbeat",
-  "heritage",
-  "foodie",
-] as const;
-export type Facet = (typeof FACETS)[number];
-export const FacetSchema = z.enum(FACETS);
+export { FACETS, FacetSchema, TasteProfileSchema } from "@/types";
+export type { Facet, TasteProfile } from "@/types";
 
 /** How each facet reads in an explanation ("shares a quiet, bookish side"). */
 export const FACET_LABEL: Record<Facet, string> = {
@@ -68,15 +49,6 @@ export const FACET_MEANING: Record<Facet, string> = {
 };
 
 export type FacetVec = Partial<Record<Facet, number>>;
-
-export const TasteProfileSchema = z.object({
-  facets: z.partialRecord(FacetSchema, z.number().min(0).max(1)),
-  /** Words a matching listing might contain ("jazz", "vinyl", "matcha"); matched against names, tags and descriptions. */
-  keywords: z.array(z.string().max(40)).max(12).default([]),
-  /** Kinds of place someone with this interest tends to enjoy. */
-  categories: z.array(z.enum(PLACE_CATEGORIES)).max(4).default([]),
-});
-export type TasteProfile = z.infer<typeof TasteProfileSchema>;
 
 export function cosine(a: FacetVec, b: FacetVec) {
   let dot = 0, na = 0, nb = 0;

@@ -8,26 +8,26 @@ import { Button, Chip, cx } from "@/components/ui/primitives";
 import { entityKindLabel } from "./entityLabels";
 
 /**
- * Starting points for people who can't name their taste off-hand: the feel of a place, as Qloo tags
- * (ambience and decor) that places are actually labelled with.
+ * Starting points for people who can't name their taste off-hand: the feel of a place. Each is a built-in
+ * Taste Engine profile (lib/taste/lexicon.ts); the server fills in its facets from the id.
  */
 const VIBES: { id: string; name: string; hint: string; tint: string }[] = [
-  { id: "urn:tag:ambience:qloo:cozy", name: "Cozy", hint: "Warm, unhurried", tint: "#F6C29B" },
-  { id: "urn:tag:ambience:qloo:quiet", name: "Quiet", hint: "Room to think", tint: "#D9D0F2" },
-  { id: "urn:tag:ambience:qloo:artsy", name: "Artsy", hint: "Makers, murals", tint: "#F2B9C8" },
-  { id: "urn:tag:decor:qloo:vintage", name: "Vintage", hint: "Worn-in, retro", tint: "#F7E6A2" },
-  { id: "urn:tag:decor:qloo:minimalist", name: "Minimalist", hint: "Calm design", tint: "#E4E0EA" },
-  { id: "urn:tag:ambience:qloo:lively", name: "Lively", hint: "A good buzz", tint: "#F2958A" },
-  { id: "urn:tag:ambience:place:hidden_gem", name: "Hidden gem", hint: "Off the path", tint: "#B9C8B0" },
-  { id: "urn:tag:ambience:qloo:romantic", name: "Romantic", hint: "Good for two", tint: "#E9A5C9" },
-  { id: "urn:tag:ambience:qloo:bohemian", name: "Bohemian", hint: "Eclectic", tint: "#C9A8E6" },
+  { id: "lx:vibe:cozy", name: "Cozy", hint: "Warm, unhurried", tint: "#F6C29B" },
+  { id: "lx:vibe:quiet", name: "Quiet", hint: "Room to think", tint: "#D9D0F2" },
+  { id: "lx:vibe:artsy", name: "Artsy", hint: "Makers, murals", tint: "#F2B9C8" },
+  { id: "lx:vibe:vintage", name: "Vintage", hint: "Worn-in, retro", tint: "#F7E6A2" },
+  { id: "lx:vibe:minimalist", name: "Minimalist", hint: "Calm design", tint: "#E4E0EA" },
+  { id: "lx:vibe:lively", name: "Lively", hint: "A good buzz", tint: "#F2958A" },
+  { id: "lx:vibe:hidden-gem", name: "Hidden gem", hint: "Off the path", tint: "#B9C8B0" },
+  { id: "lx:vibe:romantic", name: "Romantic", hint: "Good for two", tint: "#E9A5C9" },
+  { id: "lx:vibe:bohemian", name: "Bohemian", hint: "Eclectic", tint: "#C9A8E6" },
 ];
 
 const NAMED = ["Wes Anderson", "Studio Ghibli", "Phoebe Bridgers", "Haruki Murakami", "MUJI", "Specialty coffee", "Live music"];
 
 export function TastePanel() {
   const signals = useElsewhere((s) => s.tasteSignals);
-  const mode = useElsewhere((s) => s.status?.taste ?? "demo");
+  const mode = useElsewhere((s) => s.status?.taste ?? "built-in");
   const { addTaste, removeTaste, clearTaste, setPanel, setLens } = useElsewhere.getState();
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<CulturalEntity[]>([]);
@@ -41,7 +41,6 @@ export function TastePanel() {
   const typed = q.trim();
   // Only once they've stopped typing and nothing found is exactly what they typed.
   const offerOwn =
-    mode === "live" &&
     typed.length >= 2 &&
     state === "idle" &&
     loadedFor === typed &&
@@ -63,7 +62,7 @@ export function TastePanel() {
 
   function toggleVibe(v: (typeof VIBES)[number]) {
     if (signals.some((s) => s.id === v.id)) removeTaste(v.id);
-    else addTaste({ id: v.id, name: v.name, type: v.id.split(":").slice(0, 4).join(":"), provenance: "live", origin: "picked" });
+    else addTaste({ id: v.id, name: v.name, type: "vibe", provenance: "built-in", origin: "picked" });
   }
 
   useEffect(() => {
@@ -93,46 +92,44 @@ export function TastePanel() {
           Your <em>Taste</em>
         </h2>
         <p className="mt-2 text-[13px] leading-relaxed text-ink-soft">
-          Every aspect of your style. Pick the vibes you&apos;re drawn to, or add films, brands, artists and anything in between. Qloo&apos;s taste AI connects them to real places.
+          Every aspect of your style. Pick the vibes you&apos;re drawn to, or add films, artists, foods and anything in between. Claude reads each one into a taste profile, and the map shows where real places share it.
         </p>
-        {mode === "demo" && (
+        {mode === "built-in" && (
           <p className="mt-2 rounded-[var(--radius-md)] bg-butter/45 px-3 py-2 text-[12px] leading-snug text-[#6D5A1F] ring-1 ring-[#E8D27A]/50">
-            Demo mode: no Qloo key is configured, so search covers a small fixture and cultural signals are simulated. Add QLOO_API_KEY for live results.
+            Built-in mode: no Anthropic key is configured, so search covers Elsewhere&apos;s own lexicon and simple word rules. Add ANTHROPIC_API_KEY to profile anything you type.
           </p>
         )}
       </div>
 
-      {mode === "live" && (
-        <div className="px-4 pt-2">
-          <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-faint">Places that feel…</p>
-          <ul className="mt-2 grid grid-cols-3 gap-1.5">
-            {VIBES.map((v) => {
-              const on = signals.some((s) => s.id === v.id);
-              return (
-                <li key={v.id}>
-                  <button
-                    aria-pressed={on}
-                    onClick={() => toggleVibe(v)}
-                    className={cx(
-                      "relative h-full w-full rounded-[12px] px-2.5 py-1.5 text-left ring-1 transition-[transform,box-shadow] hover:-translate-y-0.5",
-                      on ? "ring-2 ring-aubergine/70" : "ring-white/80",
-                    )}
-                    style={{ background: `linear-gradient(140deg, ${v.tint}cc, ${v.tint}55)` }}
-                  >
-                    <span className="block text-[12.5px] font-semibold leading-snug text-aubergine">{v.name}</span>
-                    <span className="block truncate text-[10.5px] leading-tight text-plum/80">{v.hint}</span>
-                    {on && (
-                      <span className="absolute right-1.5 top-1.5 grid h-4 w-4 place-items-center rounded-full bg-aubergine text-ivory">
-                        <Check size={10} />
-                      </span>
-                    )}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
+      <div className="px-4 pt-2">
+        <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-faint">Places that feel…</p>
+        <ul className="mt-2 grid grid-cols-3 gap-1.5">
+          {VIBES.map((v) => {
+            const on = signals.some((s) => s.id === v.id);
+            return (
+              <li key={v.id}>
+                <button
+                  aria-pressed={on}
+                  onClick={() => toggleVibe(v)}
+                  className={cx(
+                    "relative h-full w-full rounded-[12px] px-2.5 py-1.5 text-left ring-1 transition-[transform,box-shadow] hover:-translate-y-0.5",
+                    on ? "ring-2 ring-aubergine/70" : "ring-white/80",
+                  )}
+                  style={{ background: `linear-gradient(140deg, ${v.tint}cc, ${v.tint}55)` }}
+                >
+                  <span className="block text-[12.5px] font-semibold leading-snug text-aubergine">{v.name}</span>
+                  <span className="block truncate text-[10.5px] leading-tight text-plum/80">{v.hint}</span>
+                  {on && (
+                    <span className="absolute right-1.5 top-1.5 grid h-4 w-4 place-items-center rounded-full bg-aubergine text-ivory">
+                      <Check size={10} />
+                    </span>
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
 
       <div className="space-y-3 px-4 pt-5">
         <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-faint">Things you love</p>
@@ -146,7 +143,7 @@ export function TastePanel() {
               setQ(e.target.value);
               setOwn({ busy: false });
             }}
-            placeholder="Search Qloo: a film, an artist, a brand…"
+            placeholder="A film, an artist, a food, a mood…"
             className="h-9 min-w-0 flex-1 bg-transparent text-sm text-aubergine outline-none placeholder:text-ink-faint"
           />
           {state === "loading" && <span className="shimmer-text pr-2 text-[12px]">Searching</span>}
@@ -200,7 +197,7 @@ export function TastePanel() {
             )}
             {!hits.length && !offerOwn && state !== "loading" && loadedFor === typed && (
               <li className="px-3 py-3 text-[12.5px] text-ink-soft">
-                {state === "error" ? "Couldn't reach Qloo just now. Try again in a moment." : `Nothing named “${typed}” yet.`}
+                {state === "error" ? "Couldn't look that up just now. Try again in a moment." : `Nothing named “${typed}” yet.`}
               </li>
             )}
           </ul>
@@ -229,7 +226,7 @@ export function TastePanel() {
         <ul className="mt-2 flex flex-wrap gap-1.5">
           {signals.map((e) => (
             <li key={e.id}>
-              <span className={cx("inline-flex items-center gap-1.5 rounded-full py-1.5 pl-3 pr-1.5 text-[12.5px] font-medium ring-1", e.provenance === "demo" ? "bg-butter/50 text-[#6D5A1F] ring-[#E8D27A]/60" : "bg-lavender/70 text-[#4B3B80] ring-lilac/40")}>
+              <span className={cx("inline-flex items-center gap-1.5 rounded-full py-1.5 pl-3 pr-1.5 text-[12.5px] font-medium ring-1", "bg-lavender/70 text-[#4B3B80] ring-lilac/40")}>
                 {e.name}
                 <span className="text-[11px] font-normal opacity-70">{entityKindLabel(e.type)}</span>
                 {e.origin === "conversation" && <Chip tone="muted" className="px-1.5 py-0">this chat</Chip>}

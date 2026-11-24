@@ -28,7 +28,7 @@ import { culturalLine, fmtClock, fmtDuration, MIN_STAY, roleLine, STAY_MIN, summ
 /**
  * Taste Trails: turn a spec (what the user asked for) into a routed, timed itinerary of real places.
  *
- *   1. candidates: the shared recommendation pipeline (place provider + Qloo) for the slot categories
+ *   1. candidates: the shared recommendation pipeline (place provider + Taste Engine) for the slot categories
  *   2. selection: the best-scoring set across slots, kept walkable (taste-aware score when interests exist)
  *   3. ordering: the user's order if they gave one, else the fastest order by routed travel time,
  *                    nudged so the arc ends well (a meal last, not first)
@@ -201,7 +201,7 @@ function slotScore(r: Recommendation, slot: Slot, useTaste: boolean, rank: numbe
   if (slot.likeOf?.cultural && r.cultural) {
     const top = (ev: NonNullable<Recommendation["cultural"]>) => [...ev.contributions].sort((a, b) => b.score - a.score)[0]?.entityId;
     if (top(slot.likeOf.cultural) && top(slot.likeOf.cultural) === top(r.cultural)) s += 0.08;
-    s += 0.03 * r.cultural.qlooTags.filter((t) => slot.likeOf!.cultural!.qlooTags.includes(t)).length;
+    s += 0.03 * r.cultural.facets.filter((f) => slot.likeOf!.cultural!.facets.includes(f)).length;
   }
   return s;
 }
@@ -493,8 +493,8 @@ async function assemble(args: {
     assumptions.push(`Couldn't find a ${slot.cats.map((c) => CATEGORY_LABEL[c].toLowerCase()).join(" or ")} that fits; the trail goes without it.`);
   if (args.useTaste && ctx.tasteSignals.length) {
     const matched = stops.filter((s) => s.rec.cultural).length;
-    if (matched) assumptions.push(`Qloo matched ${matched} of ${stops.length} stops to your taste.`);
-    if (result.taste.status === "error") assumptions.push(`Cultural matching failed (${result.taste.message ?? "Qloo error"}), so stops are chosen on practical fit.`);
+    if (matched) assumptions.push(`The Taste Engine matched ${matched} of ${stops.length} stops to your taste.`);
+    if (result.taste.status === "error") assumptions.push(`Taste matching failed (${result.taste.message ?? "engine error"}), so stops are chosen on practical fit.`);
   }
   if (routing.info.note) assumptions.push(routing.info.note);
 

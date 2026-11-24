@@ -1,7 +1,7 @@
 import { wallClockDate } from "@/lib/places/hours";
 import { searchInventory } from "@/lib/places";
 import { distanceM } from "@/lib/geo";
-import { culturalEvidence } from "@/lib/qloo";
+import { culturalEvidence } from "@/lib/taste/engine";
 import { namesMatch } from "@/lib/places/match";
 import type { CulturalEntity, FeedbackEntry, Place, SearchConstraints, SearchResult, UserLocation } from "@/types";
 import { relevantCategories } from "./activities";
@@ -34,9 +34,8 @@ export interface SearchInput {
 /**
  * The single recommendation pipeline shared by the agent, the quick-search UI and the Taste Lens:
  *   1. fetch the place inventory (provider chain)
- *   2. fetch cultural evidence for the same area (Qloo live or labeled demo)
- *   3. merge Qloo-only places into the shared candidate pool (so both lenses rank the same set)
- *   4. apply hard constraints and score deterministically in both modes
+ *   2. profile the candidates against the user's interests (Elsewhere Taste Engine)
+ *   3. apply hard constraints and score deterministically in both modes, from the same candidate pool
  */
 export async function runSearch(input: SearchInput): Promise<SearchResult> {
   const { location, constraints } = input;
@@ -45,18 +44,11 @@ export async function runSearch(input: SearchInput): Promise<SearchResult> {
   const inventory = await searchInventory({ lat: location.lat, lon: location.lon, radiusM: constraints.radiusM, categories });
 
   if (input.tasteSignals.length) input.onStatus?.("Connecting your interests to nearby places…");
-  const taste = await culturalEvidence({
-    signals: input.tasteSignals,
-    lat: location.lat,
-    lon: location.lon,
-    radiusM: constraints.radiusM,
-    inventory: inventory.places,
-    categories,
-  });
+  const pool = dedupe([...inventory.places, ...(input.extraPlaces ?? [])]);
+  const taste = await culturalEvidence({ signals: input.tasteSignals, inventory: pool });
 
   input.onStatus?.("Finding places that fit…");
-  const places = inventory.places.map((p) => taste.enriched.get(p.id) ?? p);
-  const candidates = dedupe([...places, ...taste.extraPlaces, ...(input.extraPlaces ?? [])]).map((place) => ({ place, cultural: taste.evidence.get(place.id) }));
+  const candidates = pool.map((place) => ({ place, cultural: taste.evidence.get(place.id) }));
 
   const keep = new Set((input.extraPlaces ?? []).map((p) => p.id));
   const { recommendations, filteredOut } = rank({
@@ -79,7 +71,7 @@ export async function runSearch(input: SearchInput): Promise<SearchResult> {
     filteredOut: filteredOut.slice(0, 60),
     inventory: {
       provider: inventory.provider,
-      count: inventory.places.length + taste.extraPlaces.length,
+      count: inventory.places.length,
       note: inventory.note,
     },
     taste: {

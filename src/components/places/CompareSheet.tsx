@@ -60,15 +60,15 @@ export function CompareSheet() {
     { label: "Outdoor seating", cell: (r) => yn(r.place.outdoorSeating) },
     { label: "Fit for the plan", cell: (r) => r.practical.find((p) => p.label === "Fit for the plan")?.detail },
     {
-      label: "Qloo taste affinity",
+      label: "Taste affinity",
       cell: (r) =>
         r.cultural
-          ? `${r.cultural.provenance === "demo" ? "Simulated" : "Qloo"} ${r.cultural.affinity?.toFixed(2) ?? ""}${
+          ? `${r.cultural.affinity?.toFixed(2) ?? ""}${
               r.cultural.contributions[0] ? ` · ${[...r.cultural.contributions].sort((a, b) => b.score - a.score)[0].entityName}` : ""
-            }`
+            }${r.cultural.facets.length ? ` (${r.cultural.facets.slice(0, 2).join(", ")})` : ""}`
           : "None",
     },
-    { label: tasteOn ? "Rank with Qloo taste" : "Practical rank", cell: (r) => `#${tasteOn ? r.tasteRank : r.practicalRank}` },
+    { label: tasteOn ? "Taste-aware rank" : "Practical rank", cell: (r) => `#${tasteOn ? r.tasteRank : r.practicalRank}` },
     { label: "Trade-offs", cell: (r) => (r.tradeoffs.length ? r.tradeoffs.join("; ") : "None") },
   ];
 

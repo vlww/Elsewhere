@@ -4,8 +4,8 @@ import type { CulturalEntity, PlaceCategory, Recommendation } from "@/types";
  * The Taste Layer's single source of truth. Both map renderers (Explore 2D, Immersive 3D) and the agent
  * read highlights from here, so a place lit up in one mode is the same place lit up in the other.
  *
- * A place is highlighted only when the recommendation pipeline attached cultural evidence to it (Qloo
- * Insights in live mode, the labeled fixture in demo mode). Nothing here invents a relationship: the
+ * A place is highlighted only when the recommendation pipeline attached cultural evidence to it (the
+ * Taste Engine found its profile close to the user's interests). Nothing here invents a relationship: the
  * tier comes from the same rank-normalized affinity the Taste Lens scores with, and the colour is just a
  * key for which of the user's interests contributed most. It isn't a claim about what that artist "looks like".
  */
@@ -23,11 +23,11 @@ export interface TasteHighlight {
   strength: number;
   color: string;
   deep: string;
-  /** The interest that contributed most, when Qloo's explainability (or a single active interest) says so. */
+  /** The interest that contributed most. */
   entityId?: string;
   entityName?: string;
-  provenance: "live" | "demo";
-  match: "qloo-place" | "name-proximity" | "simulated";
+  provenance: "ai" | "built-in";
+  match: "listing" | "profile";
   /** One short, truthful line for hovers and labels. */
   why: string;
 }
@@ -57,7 +57,7 @@ export function tasteHighlights(recs: Recommendation[], signals: CulturalEntity[
   return rankedMatches(recs, signals).slice(0, MAX_HIGHLIGHTS);
 }
 
-/** Every place with cultural evidence, strongest first. Tiers are by rank so they stay meaningful however Qloo's affinities cluster. */
+/** Every place with cultural evidence, strongest first. Tiers are by rank so they stay meaningful however affinities cluster. */
 export function rankedMatches(recs: Recommendation[], signals: CulturalEntity[]): TasteHighlight[] {
   if (!signals.length) return [];
   const colors = interestColors(signals);
@@ -67,12 +67,11 @@ export function rankedMatches(recs: Recommendation[], signals: CulturalEntity[])
     const ev = r.cultural;
     if (!ev) continue;
     const top = [...ev.contributions].sort((a, b) => b.score - a.score)[0];
-    // With one active interest, Qloo's affinity can only have come from that interest.
+    // With one active interest, the affinity can only have come from that interest.
     const entityId = top?.entityId ?? (signals.length === 1 ? signals[0].id : undefined);
     const entityName = top?.entityName ?? (entityId ? names.get(entityId) : undefined);
     const pal = (entityId && colors.get(entityId)) || BLEND;
     const strength = r.tasteScore.cultural;
-    const source = ev.provenance === "demo" ? "Simulated" : "Qloo";
     out.push({
       placeId: r.place.id,
       name: r.place.name,
@@ -87,7 +86,7 @@ export function rankedMatches(recs: Recommendation[], signals: CulturalEntity[])
       entityName,
       provenance: ev.provenance,
       match: ev.match,
-      why: entityName ? `${source}: lines up with ${entityName}` : `${source}: affinity with your interests`,
+      why: ev.note ?? (entityName ? `Lines up with ${entityName}` : "Affinity with your interests"),
     });
   }
   out.sort((a, b) => b.strength - a.strength);

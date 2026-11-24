@@ -1,6 +1,6 @@
 import { connection } from "next/server";
 import { DEMO_AREA, placesProviderSummary } from "@/lib/places";
-import { tasteMode } from "@/lib/qloo";
+import { tasteMode } from "@/lib/taste/engine";
 import { AGENT_MODEL } from "@/lib/agent/run";
 
 export async function GET() {

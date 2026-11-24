@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { AgentEvent, AgentSession, CulturalEntity, SearchResult, TasteTrail } from "@/types";
 import { CATEGORY_LABEL } from "@/lib/recommendations/activities";
-import { tasteMode } from "@/lib/qloo";
+import { tasteMode } from "@/lib/taste/engine";
 import { placesProviderSummary } from "@/lib/places";
 import { SYSTEM_PROMPT } from "./prompt";
 import { executeTool, TOOL_STATUS, TOOLS, type ToolContext } from "./tools";

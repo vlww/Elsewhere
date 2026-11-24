@@ -20,7 +20,7 @@ import { ACTIVITY_VERB, activityFit, CATEGORY_LABEL, OUTDOOR_CATEGORIES } from "
  *  activity   – fit between place type and the requested activity (Elsewhere estimate)
  *  proximity  – exp(−distance / (0.6 × radius))
  *  attributes – verified amenities and hours relative to the request
- *  cultural   – Qloo affinity, rank-normalized within this result set (0 when Qloo returned nothing for the place)
+ *  cultural   – Taste Engine affinity, rank-normalized within this result set (0 when the place isn't a taste match)
  *  feedback   – in-session "more like this" / "not for me" signals
  */
 export const WEIGHTS = {
@@ -113,7 +113,7 @@ function practicalEvidence(p: Place, d: number, open: OpenState, c: SearchConstr
 }
 
 function sourceLabel(p: Place) {
-  return { osm: "OpenStreetMap", google: "Google Places", qloo: "Qloo", "demo-snapshot": "OpenStreetMap (snapshot)" }[p.source];
+  return { osm: "OpenStreetMap", google: "Google Places", "demo-snapshot": "OpenStreetMap (snapshot)" }[p.source];
 }
 
 export function rank(input: RankInput) {
@@ -136,7 +136,7 @@ export function rank(input: RankInput) {
     else kept.push({ ...cand, d, open });
   }
 
-  // Rank-normalize Qloo affinities among kept candidates so raw API values are never reinterpreted as percentages.
+  // Rank-normalize affinities among kept candidates so the taste factor spreads across this result set.
   const affs = kept.map((k) => k.cultural?.affinity).filter((a): a is number => a !== undefined);
   const lo = Math.min(...affs), hi = Math.max(...affs);
   const culturalScore = (a?: number) => (a === undefined ? 0 : hi > lo ? 0.4 + (0.6 * (a - lo)) / (hi - lo) : 0.7);

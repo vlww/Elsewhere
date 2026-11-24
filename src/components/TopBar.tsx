@@ -65,9 +65,9 @@ export function TopBar() {
 
       {status && (
         <div className="hidden items-center gap-1.5 xl:flex">
-          {status.taste === "demo" && (
+          {status.taste === "built-in" && (
             <Chip tone="demo" className="h-7 px-2.5">
-              <span title="No Qloo key configured: cultural signals are simulated from a small fixture.">Taste: demo</span>
+              <span title="No Anthropic key configured: interests are matched with the built-in lexicon and listing word rules.">Taste: built-in</span>
             </Chip>
           )}
           {status.places[0]?.includes("snapshot") && (

@@ -153,7 +153,7 @@ export function ResultsPanel() {
         )}
         {result && (
           <p className="px-1 pt-2 text-[10.5px] leading-snug text-ink-faint">
-            Place data: {result.inventory.provider}.{result.taste.mode === "live" ? " Taste matching: Qloo Insights." : result.taste.mode === "demo" ? " Taste matching: simulated (demo mode)." : ""}
+            Place data: {result.inventory.provider}.{result.taste.mode === "ai" ? " Taste matching: Elsewhere Taste Engine with Claude." : result.taste.mode === "built-in" ? " Taste matching: Elsewhere Taste Engine (built-in profiles)." : ""}
           </p>
         )}
       </div>

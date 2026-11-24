@@ -1,5 +1,4 @@
-import { QlooError, resolveEntities, tasteMode } from "@/lib/qloo";
-import { interpretInterest } from "@/lib/qloo/interpret";
+import { interpretInterest, resolveEntities, tasteMode } from "@/lib/taste/engine";
 
 export async function GET(req: Request) {
   const params = new URL(req.url).searchParams;
@@ -13,7 +12,7 @@ export async function GET(req: Request) {
     }
     return Response.json({ mode: tasteMode(), entities: await resolveEntities(q) });
   } catch (e) {
-    const kind = e instanceof QlooError ? e.kind : "http";
-    return Response.json({ mode: tasteMode(), entities: [], error: `Qloo lookup failed (${kind}).` }, { status: 502 });
+    console.warn("[entities]", (e as Error).message);
+    return Response.json({ mode: tasteMode(), entities: [], error: "Taste lookup failed." }, { status: 502 });
   }
 }

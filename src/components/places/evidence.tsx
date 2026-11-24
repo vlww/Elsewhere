@@ -37,30 +37,36 @@ export function CulturalBlock({ ev }: { ev?: CulturalEvidence }) {
   if (!ev) {
     return (
       <p className="text-[13px] leading-snug text-ink-soft">
-        Qloo hasn&apos;t linked this place to your interests, so it&apos;s ranked on distance, hours and amenities.
+        This place&apos;s profile doesn&apos;t line up closely with your interests, so it&apos;s ranked on distance, hours and amenities.
       </p>
     );
   }
   const max = Math.max(...ev.contributions.map((c) => c.score), 0.0001);
   return (
     <div className="space-y-2.5">
+      {ev.note && <p className="text-[13px] leading-snug text-plum">{ev.note}</p>}
       <div className="flex flex-wrap items-center gap-1.5">
-        {ev.provenance === "demo" ? <Chip tone="demo">Simulated · demo mode</Chip> : <Chip tone="taste">Qloo Insights</Chip>}
-        {ev.affinity !== undefined && (
-          <Chip tone="neutral">
-            {ev.provenance === "demo" ? "Simulated affinity" : "Qloo affinity"} {ev.affinity.toFixed(2)}
-          </Chip>
-        )}
-        {ev.match === "name-proximity" && <Chip tone="muted">Matched by name &amp; location</Chip>}
-        {ev.match === "qloo-place" && <Chip tone="muted">Surfaced by Qloo</Chip>}
+        <Chip tone="taste">{ev.provenance === "ai" ? "Interest profiled by Claude" : "Built-in profile"}</Chip>
+        {ev.affinity !== undefined && <Chip tone="neutral">Affinity {ev.affinity.toFixed(2)}</Chip>}
+        {ev.match === "listing" && <Chip tone="muted">Named in the listing</Chip>}
+        <Chip tone="muted">{ev.listingRead === "claude" ? "Listing read by Claude + rules" : "Listing read by rules"}</Chip>
       </div>
-      {ev.contributions.length > 0 ? (
+      {ev.facets.length > 0 && (
+        <ul className="flex flex-wrap gap-1" aria-label="Shared taste facets">
+          {ev.facets.map((f) => (
+            <li key={f} className="rounded-full bg-white/70 px-2 py-0.5 text-[11.5px] text-[#5A4791] ring-1 ring-lilac/40">
+              {f}
+            </li>
+          ))}
+        </ul>
+      )}
+      {ev.contributions.length > 1 && (
         <ul className="space-y-1.5" aria-label="Which interests contributed">
           {[...ev.contributions].sort((a, b) => b.score - a.score).map((c) => (
             <li key={c.entityId} className="text-[12.5px]">
               <div className="flex justify-between text-plum">
                 <span>{c.entityName}</span>
-                <span className="tabular-nums text-ink-faint">{c.score.toFixed(2)}</span>
+                <span className="tabular-nums text-ink-faint">{Math.round(c.score * 100)}%</span>
               </div>
               <div className="mt-1 h-1.5 rounded-full bg-aubergine/[0.06]">
                 <div className="h-full rounded-full bg-gradient-to-r from-sunset to-lilac" style={{ width: `${(c.score / max) * 100}%` }} />
@@ -68,11 +74,10 @@ export function CulturalBlock({ ev }: { ev?: CulturalEvidence }) {
             </li>
           ))}
         </ul>
-      ) : (
-        <p className="text-[12.5px] text-ink-soft">Qloo didn&apos;t return a per-interest breakdown for this place.</p>
       )}
-      {ev.qlooTags.length > 0 && <p className="text-[12px] text-ink-soft">Qloo tags: {ev.qlooTags.join(", ")}</p>}
-      {ev.note && <p className="text-[11.5px] leading-snug text-ink-faint">{ev.note}</p>}
+      <p className="text-[11.5px] leading-snug text-ink-faint">
+        An estimate from overlapping taste profiles, not a review. It never adds facts the listing doesn&apos;t have.
+      </p>
     </div>
   );
 }
@@ -81,7 +86,7 @@ const FACTOR_LABEL: Record<keyof ScoreBreakdown["weights"], string> = {
   activity: "Fit for the plan",
   proximity: "Closeness",
   attributes: "Listed hours & amenities",
-  cultural: "Qloo taste affinity",
+  cultural: "Taste affinity",
   feedback: "Your feedback",
 };
 
@@ -103,7 +108,7 @@ export function ScoreBars({ score }: { score: ScoreBreakdown }) {
         ))}
       </ul>
       <p className="mt-2 text-[11px] leading-snug text-ink-faint">
-        Overall score {score.total.toFixed(2)}{score.weights.cultural > 0 ? ", blending Qloo taste affinity with practical fit" : ""}.
+        Overall score {score.total.toFixed(2)}{score.weights.cultural > 0 ? ", blending taste affinity with practical fit" : ""}.
       </p>
     </div>
   );
