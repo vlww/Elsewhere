@@ -100,7 +100,7 @@ function Message({ m }: { m: ChatMessage }) {
   }
   return (
     <div className="animate-rise" aria-live={m.pending ? "polite" : undefined}>
-      {m.text && <div className="whitespace-pre-wrap text-[14.5px] leading-[1.55] text-aubergine">{m.text}</div>}
+      {m.text && <div className="whitespace-pre-wrap text-[14.5px] leading-[1.55] text-aubergine">{withEmphasis(m.text)}</div>}
       {m.pending && !m.text && (
         <p className="shimmer-text text-[13.5px] font-medium" role="status">
           {agentStatus ?? "Thinking it over…"}
@@ -237,5 +237,18 @@ export function ChatPanel({ className = "" }: { className?: string }) {
         <Composer />
       </div>
     </section>
+  );
+}
+
+/** The guide sometimes bolds place names with **markdown**; show it as bold rather than as asterisks. */
+function withEmphasis(text: string) {
+  return text.split(/(\*\*[^*\n]+\*\*)/g).map((part, i) =>
+    part.startsWith("**") && part.endsWith("**") && part.length > 4 ? (
+      <strong key={i} className="font-semibold">
+        {part.slice(2, -2)}
+      </strong>
+    ) : (
+      part
+    ),
   );
 }
