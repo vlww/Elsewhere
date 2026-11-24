@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Bookmark, Footprints, MapPin, Search, Sparkles } from "lucide-react";
+import { Bookmark, Footprints, Info, MapPin, Search, Sparkles } from "lucide-react";
 import { useElsewhere } from "@/store/useElsewhere";
 import { Chip, cx } from "@/components/ui/primitives";
 import { LocationSearch } from "./LocationGate";
 import { Logo } from "./Logo";
+import { AboutAI } from "./AboutAI";
 
 export function TopBar() {
   const location = useElsewhere((s) => s.location);
@@ -16,6 +17,7 @@ export function TopBar() {
   const tasteCount = useElsewhere((s) => s.tasteSignals.length);
   const trailStops = useElsewhere((s) => s.trail?.stops.length ?? 0);
   const [editing, setEditing] = useState(false);
+  const [about, setAbout] = useState(false);
 
   const nav = [
     { id: "results" as const, label: "Explore", icon: Search },
@@ -62,6 +64,16 @@ export function TopBar() {
           </button>
         ))}
       </nav>
+
+      <button
+        onClick={() => setAbout(true)}
+        className="surface inline-flex h-12 items-center gap-1.5 rounded-full px-3.5 text-[13px] font-medium text-ink-soft hover:text-aubergine"
+        aria-haspopup="dialog"
+      >
+        <Info size={15} />
+        <span className="hidden sm:inline">How AI is used</span>
+      </button>
+      {about && <AboutAI onClose={() => setAbout(false)} />}
 
       {status && (
         <div className="hidden items-center gap-1.5 xl:flex">

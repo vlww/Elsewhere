@@ -27,6 +27,8 @@ import type { TrailEdit, TrailPatch } from "@/lib/trails/plan";
 
 export interface AppStatus {
   taste: "ai" | "built-in";
+  /** Model behind the Taste Engine's interest and listing reads, when Claude is configured. */
+  tasteModel?: string;
   places: string[];
   agent: { model: string; configured: boolean };
   demoArea: { name: string; center: { lat: number; lon: number }; bbox: [number, number, number, number]; snapshotDate: string; license: string };
