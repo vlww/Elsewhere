@@ -70,7 +70,7 @@ export const FACET_MEANING: Record<Facet, string> = {
 export type FacetVec = Partial<Record<Facet, number>>;
 
 export const TasteProfileSchema = z.object({
-  facets: z.record(FacetSchema, z.number().min(0).max(1)),
+  facets: z.partialRecord(FacetSchema, z.number().min(0).max(1)),
   /** Words a matching listing might contain ("jazz", "vinyl", "matcha"); matched against names, tags and descriptions. */
   keywords: z.array(z.string().max(40)).max(12).default([]),
   /** Kinds of place someone with this interest tends to enjoy. */
