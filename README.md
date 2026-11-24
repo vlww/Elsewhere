@@ -3,6 +3,53 @@
 ## **Live Demo:** https://findelsewhere.vercel.app  
 ## **GitHub:** https://github.com/vlww/Elsewhere
 
+## Project Name and Overview
+
+**Elsewhere** is an AI map guide that helps you find places you'll actually enjoy, not just places that are nearby.
+
+Tell it what you love (a filmmaker, a band, boba, "cozy", brutalist buildings) and what you need right now ("somewhere quiet to read for an hour"). Elsewhere ranks real places around you, lights up the ones that match your taste on a 2D or immersive 3D map, explains every match in plain language, and can plan a routed, timed outing through several stops that you can edit by chatting.
+
+At its core is the **Elsewhere Taste Engine**, which uses Claude to turn anything you type into a taste profile and to read nearby place listings into the same vocabulary, so it can show *why* a place fits you.
+
+## Problem and Solution
+
+**The problem.** Map apps answer "what's near me?", not "where would I enjoy spending time?". Search for coffee shops near you and you get a list sorted by distance and stars. It doesn't know you'd rather sit in a cramped used bookstore than a polished chain café. Many people feel this: 47% of people who work from cafés do it for a change of scene, yet most of us end up rotating through the same two or three places. And people rarely know how to describe their taste in the terms a search box understands.
+
+**Who it's for.** Students and young adults who study, work, read or meet friends outside home and want somewhere new, plus anyone exploring an unfamiliar neighborhood with a free afternoon.
+
+**The solution.** Elsewhere lets you describe your taste in your own words and connects it to real places:
+
+- **Taste in your own words.** Pick vibes (Cozy, Quiet, Vintage, Hidden gem) or type anything you love. Claude reads it into a taste profile, so "Murakami" leads to bookstores and record shops, and "brutalism" leads to architecture and galleries.
+- **Explainable recommendations.** Every place has a practical score (distance, listed hours, amenities, fit for what you're doing) and a taste score. "Why this place?" shows the shared facets and the listing words behind a match. For example: *"Shares Haruki Murakami's bookish and musical side; the listing mentions 'records'."*
+- **A map that shows your taste.** The Taste Layer highlights matching places in 2D, or turns them into lit 3D buildings in Immersive mode.
+- **Taste Trails.** Ask for "a bookstore, somewhere green, then cheap food before 6" and the guide builds a routed itinerary with travel times and opening-hours checks. You can then revise it by chatting ("make it cheaper", "swap the last stop for something artsy").
+- **What you asked for comes first.** A request for ramen gets ramen; taste only chooses between real matches.
+
+## AI Implementation
+
+Elsewhere uses Claude through the **Anthropic API** (`@anthropic-ai/sdk`) in three roles, all server-side in Next.js API routes.
+
+**1. Taste Engine: understanding interests** (`src/lib/taste/ai.ts`, Claude Haiku 5.5)
+When you type an interest, Claude returns **structured output** (validated with Zod via `messages.parse` + `zodOutputFormat`): the real things you might mean (e.g. *Haruki Murakami, Japanese novelist*), each with weights over 16 taste facets (quiet, bookish, nostalgic, design-minded, offbeat…), words a matching place might list (*jazz, vinyl, books*), and the kinds of place a fan would enjoy. A second reading treats the text "as typed", so free-form interests like "rainy day jazz" work too. The prompt tells Claude to list only things it's confident exist, never to invent details, and to make no assumptions about the person's demographics.
+
+**2. Taste Engine: reading place listings** (Claude Haiku 5.5)
+Claude reads nearby listings (name, kind, tags, description from Google Places / OpenStreetMap) in parallel batches and describes each in the same 16 facets. It also **flags listings that look miscategorised**: Google files some offices as "bookstores", and those are never shown as taste matches. Readings are cached per place, start in the background before you add any interest, and are time-boxed (1.5 s), so the model never slows results down.
+
+**3. The guide: a tool-using agent** (`src/lib/agent/`, Claude Opus 5.5 by default)
+The chat guide is an agent with **15 typed tools**: search places, look up and add interests, compare, save, toggle the Taste Layer, and plan or revise Taste Trails. Its tool calls change the shared app state, so the map responds as it works. Tool inputs are validated with Zod, the system prompt and conversation are **prompt-cached**, and tool rounds and output are capped to keep turns fast and cheap.
+
+**How the pieces combine.** Matching is deliberately not a black box. Each place gets a profile built from its listed facts (24 transparent word rules plus its category, amenities, price and rating), blended with Claude's reading. Affinity is the facet similarity between your interests and the place, plus keyword hits in the listing, plus kind-of-place fit. Each match carries the interest that led, the shared facets, the matched words and a one-line reason. A deterministic ranker then blends taste with practical fit, and OSRM routing plus opening-hours checks turn matches into realistic trails.
+
+**Responsible use.**
+- Claude never creates places, hours, prices or amenities; every fact comes from a place provider, and missing data is labelled "not listed".
+- Taste matches are labelled as estimates and always shown with their reasons.
+- Profiles describe places, not people: no demographic inference.
+- A **"How AI is used"** panel in the app explains all of this and shows a live view of how Elsewhere reads your taste.
+- No accounts: interests and saved places stay in your browser.
+- Without an API key, the same engine runs on a hand-written lexicon of 49 interests and the listing rules, so the app degrades gracefully.
+
+**Stack:** Anthropic API (Claude Opus 5.5 and Haiku 5.5), Next.js 16, React 19, TypeScript, Zod, Zustand, MapLibre GL, Three.js, Google Places API, OpenStreetMap / OpenFreeMap, OSRM, sharp, Vitest, Vercel.
+
 ---
 
 ![Inspiration](https://findelsewhere.vercel.app/devpost/section-inspiration.webp)
@@ -28,7 +75,7 @@ Elsewhere is a map discovery app that helps you find places you'll actually want
 ## Explore
 ### Find Places That Fit You
 
-Instead of just ranking places by distance, Elsewhere gives each location a practical score based on factors like activity fit, proximity, and available attributes. It also calculates a taste-aware score that incorporates cultural affinity from Qloo.
+Instead of just ranking places by distance, Elsewhere gives each location a practical score based on factors like activity fit, proximity, and available attributes. It also calculates a taste-aware score from the Elsewhere Taste Engine, which compares your interests with each place's taste profile.
 
 Every recommendation includes a breakdown of why it was selected, so you can understand what makes a place a good fit. You can filter by category, compare places side by side, save favorites, and give feedback that influences future results. You can also tell the guide what you need directly, in plain text.
 
@@ -41,7 +88,7 @@ Not everyone knows how to describe their taste, so Elsewhere gives you a few way
 
 ![Your Taste: vibe cards and interests](https://findelsewhere.vercel.app/devpost/screens/taste-panel.webp)
 
-These signals feed into Qloo's cultural intelligence API, which helps identify places that may resonate with your interests.
+Claude reads each of these into a taste profile over 16 facets (quiet, bookish, nostalgic, design-minded…), and the Taste Engine finds the places nearby whose own profiles line up.
 
 **The Taste Layer** takes this a step further by transforming the map itself. In 2D Explore mode, relevant places receive colorful highlights and surrounding building tints. Switch to Immersive mode, and those same locations become detailed 3D buildings with custom facades, rooftop details and lighting.
 
@@ -56,7 +103,7 @@ Sometimes I don't just want one recommendation. I want an entire afternoon plann
 
 With Taste Trails, I can ask Elsewhere to plan a creative afternoon, find three places to explore before dinner, or put together an outing with a bookstore, somewhere to sit outside, and somewhere inexpensive to eat.
 
-The agent combines cultural relevance from Qloo with real places and geographic routing to build a route of two to five stops. It accounts for travel time, estimated arrival times, opening hours, and the time I have available.
+The agent combines Taste Engine matches with real places and geographic routing to build a route of two to five stops. It accounts for travel time, estimated arrival times, opening hours, and the time I have available.
 
 The route appears directly on the map as an animated gradient line in 2D or a glowing path with stop beacons in 3D. Each stop includes its own details and explanation of why it belongs in the itinerary.
 
@@ -78,17 +125,17 @@ The agent can search for places, find cultural entities, add interests, highligh
 
 I used Zod to validate tool inputs and API responses, which helps keep the agent grounded in actual data instead of letting it invent locations or facts.
 
-### Cultural Intelligence with Qloo
+### The Taste Engine
 
-Qloo is a core part of Elsewhere's recommendation system. I use its entity search, tag search, and Insights API to connect user interests to relevant places.
+The Taste Engine is how Elsewhere connects what you love to where you might go. Interests and places are both described with the same 16 taste facets. Claude profiles interests from whatever you type and reads place listings into facets. In parallel, a set of transparent rules builds a profile from each listing's facts: its kind, name, tags, description, outdoor seating, price, and whether it's highly rated but little known.
 
-One interesting implementation detail was handling different kinds of interests separately. I query cultural entities and general tags independently, then combine the results because combining everything into one request sometimes caused specific interests to get overshadowed.
+Affinity combines facet similarity, keyword hits in the listing (a jazz bar for someone who loves Murakami), and kind-of-place fit. Every match records which interest led, which facets it shares and which listing words matched, so the app and the guide can always explain it in a sentence.
 
-I also had to match Qloo's place results with places from Google Places and OpenStreetMap. These providers can represent the same venue as different records, so I match them using name tokens and geographic distance.
+I treated the model as a reader, not an oracle. Claude translates text that Elsewhere already has into a shared vocabulary; it never adds places or facts. Its listing reads are cached, warmed in the background and time-boxed, and the engine falls back to a hand-written lexicon when no key is configured.
 
 ### Places, Ranking, and Routing
 
-For real-world place data, I use Google Places API, with OpenStreetMap fallbacks. I built a deterministic ranking system that considers activity fit, proximity, available attributes, and user feedback. The taste-aware ranking adds cultural affinity from Qloo. This lets Elsewhere balance what someone wants to do with what they might enjoy.
+For real-world place data, I use Google Places API, with OpenStreetMap fallbacks. I built a deterministic ranking system that considers activity fit, proximity, available attributes, and user feedback. The taste-aware ranking adds the Taste Engine's affinity. This lets Elsewhere balance what someone wants to do with what they might enjoy.
 
 For Taste Trails, I use OSRM for geographic routing. The planner evaluates combinations of stops, considers travel time and walkability, checks opening hours at estimated arrival times, and fits the itinerary to the user's time budget. When a user revises a trail, the planner locks untouched stops so it doesn't unnecessarily rebuild the entire outing.
 
@@ -105,8 +152,8 @@ One small but important detail was extracting colors from place photos. I use `s
 | Technology | Purpose |
 |---|---|
 | Next.js 16, React 19, TypeScript | Application and server-side API routes |
-| Anthropic API | Conversational agent and tool execution |
-| Qloo Insights API | Cultural intelligence and taste-aware recommendations |
+| Anthropic API, Claude Opus 5.5 | Conversational agent and tool execution |
+| Claude Haiku 5.5 (structured outputs) | Taste Engine: interest profiles and listing reads |
 | Google Places API (New) | Real-world place search and details |
 | OpenStreetMap, OpenFreeMap | Geographic data and map tiles |
 | MapLibre GL | Interactive 2D map and geographic rendering |
@@ -116,6 +163,7 @@ One small but important detail was extracting colors from place photos. I use `s
 | Zod | Input and response validation |
 | Tailwind CSS | Styling and responsive layouts |
 | sharp | Server-side image color extraction |
+| Vitest, GitHub Actions | Tests and CI |
 | Vercel | Deployment |
 
 ---
@@ -128,9 +176,9 @@ One early version of the planner interpreted a request for milk tea followed by 
 
 I fixed this by resolving literal requests through place search first, using synonyms where appropriate, and allowing taste to choose between actual matches rather than override the requested category.
 
-**Working with noisy cultural search results**
+**Making taste matching honest**
 
-Searching for a simple interest sometimes returned unrelated entities, individual menu items, or names that happened to contain similar words. I added stricter filtering, tag-family checks, popularity thresholds, and a fallback that translates free-typed interests into Qloo's vocabulary.
+It's easy for a taste system to call everything a match or to sound more certain than it is. Early versions lit up most of the map, and some "bookstores" from the places API were really offices. I moved to my own facet vocabulary that both interests and places share. Claude translates whatever someone types into it, a selectivity threshold keeps weak overlaps from being called matches, and Claude flags listings that are filed under the wrong kind of place.
 
 **Making the 3D map work with real geography**
 
@@ -147,11 +195,12 @@ A route that looks good on a map isn't necessarily a good itinerary. I added arr
 Here are some things I'm really proud of after building this project:
 
 - Creating a taste-aware map that works in both 2D and immersive 3D, with the same recommendations and explanations in both modes
-- Integrated Qloo into the actual recommendation pipeline rather than using it as a superficial add-on
+- Built my own explainable Taste Engine, where Claude reads interests and listings into a shared facet vocabulary, and every match comes with its reasons
 - Built editable, multi-stop itineraries with real places, geographic routes, travel estimates, and opening-hours checks
 - Made taste input flexible enough to support both predefined vibes and unusual interests entered in free text
 - Made recommendations explainable and clearly labeled estimates and missing information instead of inventing details
-- Built a demo that still works without API keys using a real OpenStreetMap snapshot of the demo area, with simulated taste signals clearly labeled when Qloo is unavailable
+- Built a demo that still works without API keys, using a real OpenStreetMap snapshot of the demo area and a built-in taste lexicon
+- Covered the engine and ranking with tests that run offline in CI
 
 ---
 
@@ -161,7 +210,7 @@ The biggest lesson was that personalization should shape recommendations without
 
 I also learned how much work goes into connecting real-world data sources. Matching places across providers, filtering noisy search results, handling missing hours, and keeping routes realistic turned out to be just as important as the AI itself.
 
-On the technical side, I learned a lot about building tool-using agents, integrating Qloo's Insights API, rendering custom Three.js scenes inside a geographic map, and keeping API costs manageable with prompt caching and limits on tool execution.
+On the technical side, I learned a lot about building tool-using agents, using structured outputs to turn free text into data an engine can reason about, rendering custom Three.js scenes inside a geographic map, and keeping API costs manageable with prompt caching and limits on tool execution.
 
 Most importantly, I learned that people don't always know how to describe what they like. Giving them a few options to choose from and letting them type whatever comes to mind can be much more natural than asking them to build a detailed taste profile from scratch.
 
@@ -178,3 +227,27 @@ Here are a few ideas I have that might further improve Elsewhere:
 - **Mobile app and offline maps:** Make Elsewhere useful for exploring new cities without needing to stay connected
 
 I want Elsewhere to make exploring a city feel a little more personal. Instead of endlessly scrolling through places and hoping something looks interesting, you should be able to describe the kind of experience you want and let Elsewhere help you find it.
+
+---
+
+## Run It Yourself
+
+```bash
+git clone https://github.com/vlww/Elsewhere && cd Elsewhere
+npm install
+cp .env.example .env.local   # every key is optional
+npm run dev                  # http://localhost:3000
+```
+
+- **No keys:** choose "Try the demo area" for Washington Square, New York, from a real OpenStreetMap snapshot. Taste matching uses the built-in lexicon.
+- **`ANTHROPIC_API_KEY`:** turns on the guide and Claude in the Taste Engine.
+- **`GOOGLE_PLACES_API_KEY`:** searches anywhere.
+
+```bash
+npm test            # Taste Engine and ranking tests (offline)
+npm run typecheck
+npm run lint
+```
+
+MIT licensed.
+
