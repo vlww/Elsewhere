@@ -1,6 +1,6 @@
 import { distanceM } from "@/lib/geo";
 import type { CulturalEntity, CulturalEvidence, Place, TasteProvenance } from "@/types";
-import { claudeConfigured, interpretWithClaude, readListings, toProfile, type InterpretedCandidate } from "./ai";
+import { claudeConfigured, interpretWithClaude, normalizeKind, readListings, toProfile, type InterpretedCandidate, type ListingRead } from "./ai";
 import { blend, cosine, FACET_LABEL, facetsFromText, mentions, sharedFacets, type FacetVec, type TasteProfile } from "./facets";
 import { lexiconById, lexiconByName, searchLexicon, type LexiconEntry } from "./lexicon";
 import { profilePlace } from "./placeProfile";
@@ -45,7 +45,7 @@ function fromCandidate(c: InterpretedCandidate, opts: { name?: string; kind?: st
   const profile = toProfile(c);
   if (!Object.keys(profile.facets).length) return null;
   const name = opts.name ?? c.name.trim();
-  const kind = opts.kind ?? c.kind;
+  const kind = opts.kind ?? normalizeKind(c.kind);
   return { id: `ai:${kind}:${slug(name)}`, name, type: kind, disambiguation: c.about.trim().slice(0, 80) || undefined, provenance: "ai", origin: "picked", profile };
 }
 
@@ -76,7 +76,8 @@ export async function interpretInterest(text: string): Promise<CulturalEntity | 
   const name = cap(text);
   const read = await interpretWithClaude(text);
   if (read) {
-    const e = fromCandidate(read.as_typed, { name, kind: read.as_typed.kind === "person" || read.as_typed.kind === "artist" ? read.as_typed.kind : "interest" });
+    const k = normalizeKind(read.as_typed.kind);
+    const e = fromCandidate(read.as_typed, { name, kind: k === "person" || k === "artist" || k === "food" || k === "activity" || k === "vibe" ? k : "interest" });
     if (e) return e;
   }
   const words = facetsFromText(text);
@@ -179,11 +180,13 @@ export async function culturalEvidence(args: {
     return { mode, status: "no-signals", message: "Those interests couldn't be profiled. Try adding them again.", evidence, signals };
   }
   try {
-    const reads = useClaude ? await readListings(order, { budgetMs: 1500 }) : new Map<string, FacetVec>();
+    const reads = useClaude ? await readListings(order, { budgetMs: 1500 }) : new Map<string, ListingRead>();
     for (const place of args.inventory) {
       const rules = profilePlace(place);
       const claude = reads.get(place.id);
-      const facets = claude ? blend(rules.facets, claude, 0.5) : rules.facets;
+      // Claude flagged the listing as probably not a real venue of its kind: no taste claim either way.
+      if (claude && !claude.plausible) continue;
+      const facets = claude ? blend(rules.facets, claude.facets, 0.5) : rules.facets;
       const fits = signals.map((s) => fitOne(s, facets, rules.text, place)).sort((a, b) => b.score - a.score);
       const top = fits[0].score;
       const mean = fits.reduce((s, f) => s + f.score, 0) / fits.length;

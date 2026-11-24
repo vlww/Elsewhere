@@ -35,7 +35,8 @@ export const ENTITY_KINDS = ["person", "artist", "film", "tv_show", "book", "bra
 
 const Candidate = z.object({
   name: z.string().describe("The canonical name, correctly spelled"),
-  kind: z.enum(ENTITY_KINDS),
+  // A free string, normalized after: one unexpected kind shouldn't throw away an otherwise good profile.
+  kind: z.string().describe(`One of: ${ENTITY_KINDS.join(", ")}`),
   about: z.string().describe("Under 8 words that tell it apart, e.g. 'Japanese novelist' or 'Film, 2003'"),
   facets: FacetWeights.describe("2-6 facets with weights 0-1 for the places a fan of this would love"),
   keywords: z.array(z.string()).describe("2-6 lowercase words a matching venue listing might contain"),
@@ -62,6 +63,19 @@ Rules:
 - Stay neutral: no assumptions about the person's gender, age, ethnicity or income.`;
 
 const interpretCache = new TtlCache<Interpretation | null>(24 * 60 * 60 * 1000, 800);
+
+export function normalizeKind(kind: string): (typeof ENTITY_KINDS)[number] {
+  const k = kind.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if ((ENTITY_KINDS as readonly string[]).includes(k)) return k as (typeof ENTITY_KINDS)[number];
+  if (/movie|film|director|actor/.test(k)) return "film";
+  if (/band|musician|singer|music/.test(k)) return "artist";
+  if (/show|series/.test(k)) return "tv_show";
+  if (/author|writer|novel/.test(k)) return k.includes("novel") ? "book" : "person";
+  if (/drink|cuisine|dish|food/.test(k)) return "food";
+  if (/hobby|sport|activity/.test(k)) return "activity";
+  if (/mood|vibe|aesthetic/.test(k)) return "vibe";
+  return "interest";
+}
 
 export function toProfile(c: { facets: { facet: string; weight: number }[]; keywords: string[]; categories: string[] }): TasteProfile {
   const facets: FacetVec = {};
@@ -108,8 +122,21 @@ export async function interpretWithClaude(text: string): Promise<Interpretation 
 // --- Reading place listings -------------------------------------------------
 
 const ListingReads = z.object({
-  places: z.array(z.object({ id: z.string(), facets: FacetWeights })),
+  places: z.array(
+    z.object({
+      id: z.string(),
+      plausible: z.boolean().describe("False when the name suggests this isn't really a public venue of that kind (an office, a company, a mislabeled listing)"),
+      facets: FacetWeights,
+    }),
+  ),
 });
+
+/** Claude's reading of one listing. */
+export interface ListingRead {
+  facets: FacetVec;
+  /** False when the listing looks miscategorised (a marketing firm filed as a bookstore). */
+  plausible: boolean;
+}
 
 const READ_SYSTEM = `You read short venue listings for a map app and describe each venue's character with taste facets (weights 0-1):
 ${FACET_GUIDE}
@@ -117,9 +144,10 @@ ${FACET_GUIDE}
 Rules:
 - Use only what the listing says, plus what is typical for that exact kind of venue and name. Do not guess at specific facts.
 - 1-5 facets per venue. If a listing says little, give fewer, lower weights.
+- Mark plausible false only when the name clearly reads as something else (a company, an office, a wholesaler) rather than a place people visit.
 - Return every id you were given, unchanged.`;
 
-const readCache = new TtlCache<FacetVec>(7 * 24 * 60 * 60 * 1000, 4000);
+const readCache = new TtlCache<ListingRead>(7 * 24 * 60 * 60 * 1000, 4000);
 
 /** Places being read right now, so overlapping searches don't ask Claude about the same listing twice. */
 const inFlight = new Set<string>();
@@ -132,8 +160,8 @@ const inFlight = new Set<string>();
  * filling the cache in the background for the next search. Places without a reading keep their
  * rule-based profile, so a slow model never holds up results.
  */
-export async function readListings(places: Place[], { budgetMs = 1500, max = 90 } = {}): Promise<Map<string, FacetVec>> {
-  const out = new Map<string, FacetVec>();
+export async function readListings(places: Place[], { budgetMs = 1500, max = 90 } = {}): Promise<Map<string, ListingRead>> {
+  const out = new Map<string, ListingRead>();
   if (!claudeConfigured() || process.env.ELSEWHERE_READ_LISTINGS === "off") return out;
   const todo = places.filter((p) => !readCache.get(p.id) && !inFlight.has(p.id)).slice(0, max);
   const batches: Place[][] = [];
@@ -165,7 +193,7 @@ async function readBatch(batch: Place[]) {
     );
     const known = new Set(batch.map((p) => p.id));
     for (const r of msg.parsed_output?.places ?? []) {
-      if (known.has(r.id)) readCache.set(r.id, toProfile({ facets: r.facets, keywords: [], categories: [] }).facets);
+      if (known.has(r.id)) readCache.set(r.id, { facets: toProfile({ facets: r.facets, keywords: [], categories: [] }).facets, plausible: r.plausible });
     }
   } catch (e) {
     console.warn("[taste:read]", (e as Error).message);
