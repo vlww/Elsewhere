@@ -1,5 +1,3 @@
----
-
 ![Elsewhere](https://findelsewhere.vercel.app/devpost/elsewhere-banner.webp)
 
 ### **Live Demo:** https://findelsewhere.vercel.app  
