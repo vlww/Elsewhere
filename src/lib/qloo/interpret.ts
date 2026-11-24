@@ -5,6 +5,7 @@ import { TtlCache } from "@/lib/cache";
 import { PLACE_CATEGORIES, type CulturalEntity, type PlaceCategory } from "@/types";
 import { searchTags } from "./client";
 import { rankTags, qlooTagsFor, tasteMode } from "./index";
+import { synonymsFor } from "@/lib/places/synonyms";
 
 /**
  * "Add it as I typed it": turns any interest ("boba", "brutalism", "cozy rainy days") into something the
@@ -12,31 +13,6 @@ import { rankTags, qlooTagsFor, tasteMode } from "./index";
  * rephrased into Qloo's vocabulary ("boba" is "bubble tea"), and as a last resort mapped to the kinds of
  * place it suggests. The interest keeps the user's own name; its disambiguation says what it matched.
  */
-
-/** Common words Qloo files under another name; checked before asking a model. */
-const SYNONYMS: Record<string, string[]> = {
-  boba: ["bubble tea"],
-  "milk tea": ["bubble tea"],
-  "pearl tea": ["bubble tea"],
-  thrifting: ["thrift store", "vintage"],
-  thrift: ["thrift store", "vintage"],
-  "coffee shops": ["coffee shop"],
-  vinyl: ["record store"],
-  records: ["record store"],
-  plants: ["plant nursery", "garden"],
-  "dim sum": ["dim sum"],
-  ramen: ["ramen"],
-  pho: ["pho"],
-  manga: ["manga", "comic book store"],
-  anime: ["anime"],
-  bouldering: ["climbing gym"],
-  climbing: ["climbing gym"],
-};
-
-/** Other names a place might go by for these words ("boba" → "bubble tea"). */
-export function synonymsFor(text: string): string[] {
-  return SYNONYMS[text.trim().toLowerCase()] ?? [];
-}
 
 const Rephrase = z.object({
   phrases: z.array(z.string()).describe("2-4 short phrases in plain English for the same interest as a venue, menu item, cuisine, vibe or activity"),
@@ -89,7 +65,7 @@ export async function interpretInterest(text: string): Promise<CulturalEntity | 
   if (direct) return { ...base, id: direct.id, type: direct.type ?? "urn:tag", disambiguation: direct.name.toLowerCase() === text.trim().toLowerCase() ? undefined : `Matched to ${direct.name}` };
 
   const model = await rephrase(text);
-  const phrases = [...(SYNONYMS[text.trim().toLowerCase()] ?? []), ...(model?.phrases ?? [])].slice(0, 5);
+  const phrases = [...synonymsFor(text), ...(model?.phrases ?? [])].slice(0, 5);
   for (const p of phrases) {
     const t = await tagFor(p);
     if (t) return { ...base, id: t.id, type: t.type ?? "urn:tag", disambiguation: `Matched to ${t.name}` };

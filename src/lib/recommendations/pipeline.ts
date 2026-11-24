@@ -1,7 +1,8 @@
 import { wallClockDate } from "@/lib/places/hours";
 import { searchInventory } from "@/lib/places";
 import { distanceM } from "@/lib/geo";
-import { culturalEvidence, namesMatch } from "@/lib/qloo";
+import { culturalEvidence } from "@/lib/qloo";
+import { namesMatch } from "@/lib/places/match";
 import type { CulturalEntity, FeedbackEntry, Place, SearchConstraints, SearchResult, UserLocation } from "@/types";
 import { relevantCategories } from "./activities";
 import { rank } from "./rank";

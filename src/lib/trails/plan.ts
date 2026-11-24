@@ -3,8 +3,8 @@ import { distanceM } from "@/lib/geo";
 import { evaluateOpenState, wallClockDate } from "@/lib/places/hours";
 import { runSearch } from "@/lib/recommendations/pipeline";
 import { searchByText } from "@/lib/places";
-import { namesMatch } from "@/lib/qloo";
-import { synonymsFor } from "@/lib/qloo/interpret";
+import { namesMatch } from "@/lib/places/match";
+import { synonymsFor } from "@/lib/places/synonyms";
 import { CATEGORY_LABEL } from "@/lib/recommendations/activities";
 import { durationMatrix, routeLegs } from "@/lib/routing";
 import {
