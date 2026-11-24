@@ -55,6 +55,12 @@ const GPlace = z.object({
   websiteUri: z.string().optional(),
   googleMapsUri: z.string().optional(),
   outdoorSeating: z.boolean().optional(),
+  liveMusic: z.boolean().optional(),
+  servesVegetarianFood: z.boolean().optional(),
+  servesCocktails: z.boolean().optional(),
+  servesWine: z.boolean().optional(),
+  allowsDogs: z.boolean().optional(),
+  goodForGroups: z.boolean().optional(),
   editorialSummary: z.object({ text: z.string() }).optional(),
   regularOpeningHours: z
     .object({
@@ -89,8 +95,29 @@ const FIELDS = [
   "places.id", "places.displayName", "places.location", "places.primaryType", "places.types",
   "places.shortFormattedAddress", "places.formattedAddress", "places.priceLevel", "places.rating",
   "places.userRatingCount", "places.websiteUri", "places.googleMapsUri", "places.outdoorSeating",
+  // Same Atmosphere tier as outdoorSeating, so no extra cost; they feed the taste engine's listing profile.
+  "places.liveMusic", "places.servesVegetarianFood", "places.servesCocktails", "places.servesWine", "places.allowsDogs", "places.goodForGroups",
   "places.editorialSummary", "places.regularOpeningHours", "places.currentOpeningHours.openNow", "places.photos",
 ].join(",");
+
+/** Types every listing carries, or that only restate the category; they say nothing about the place's character. */
+const BLAND_TYPES = new Set([
+  "point_of_interest", "establishment", "food", "store", "restaurant", "cafe", "coffee_shop", "park", "tourist_attraction",
+  "food_store", "service", "place_of_worship", "health",
+]);
+
+/** Listing tags from Google's own vocabulary: specific types ("vegan_restaurant", "japanese_restaurant") and stated attributes. */
+function googleTags(p: z.infer<typeof GPlace>): string[] {
+  const tags = (p.types ?? []).filter((t) => !BLAND_TYPES.has(t)).map((t) => t.replace(/_/g, " "));
+  if (p.priceLevel === "PRICE_LEVEL_FREE") tags.push("free");
+  if (p.liveMusic) tags.push("live music");
+  if (p.servesVegetarianFood) tags.push("vegetarian options");
+  if (p.servesCocktails) tags.push("cocktails");
+  if (p.servesWine) tags.push("wine");
+  if (p.allowsDogs) tags.push("dog friendly");
+  if (p.goodForGroups) tags.push("good for groups");
+  return [...new Set(tags)].slice(0, 10);
+}
 
 function toPlace(p: z.infer<typeof GPlace>, category: PlaceCategory, fetchedAt: string): Place {
   const photo = p.photos?.[0];
@@ -119,7 +146,7 @@ function toPlace(p: z.infer<typeof GPlace>, category: PlaceCategory, fetchedAt: 
     // Served through /api/photo so the API key never reaches the browser.
     imageUrl: photo ? `/api/photo?name=${encodeURIComponent(photo.name)}` : undefined,
     imageCredit: photo?.authorAttributions?.[0]?.displayName ? `Photo: ${photo.authorAttributions[0].displayName} via Google` : undefined,
-    tags: p.priceLevel === "PRICE_LEVEL_FREE" ? ["free"] : [],
+    tags: googleTags(p),
     fetchedAt,
   };
 }
