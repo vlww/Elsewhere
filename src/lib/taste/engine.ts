@@ -1,3 +1,4 @@
+import { distanceM } from "@/lib/geo";
 import type { CulturalEntity, CulturalEvidence, Place, TasteProvenance } from "@/types";
 import { claudeConfigured, interpretWithClaude, readListings, toProfile, type InterpretedCandidate } from "./ai";
 import { blend, cosine, FACET_LABEL, facetsFromText, mentions, sharedFacets, type FacetVec, type TasteProfile } from "./facets";
@@ -156,16 +157,29 @@ export interface TasteResult {
   signals: CulturalEntity[];
 }
 
-export async function culturalEvidence(args: { signals: CulturalEntity[]; inventory: Place[]; readWithClaude?: boolean }): Promise<TasteResult> {
+export async function culturalEvidence(args: {
+  signals: CulturalEntity[];
+  inventory: Place[];
+  /** Read listings with Claude when configured (default true). */
+  readWithClaude?: boolean;
+  /** Where the user is; Claude reads the nearest listings first. */
+  near?: { lat: number; lon: number };
+}): Promise<TasteResult> {
   const mode = tasteMode();
   const evidence = new Map<string, CulturalEvidence>();
-  if (!args.signals.length) return { mode, status: "no-signals", evidence, signals: [] };
+  const useClaude = args.readWithClaude !== false;
+  const order = args.near ? [...args.inventory].sort((a, b) => distanceM(args.near!, a) - distanceM(args.near!, b)) : args.inventory;
+  if (!args.signals.length) {
+    // Nothing to match yet: start reading nearby listings so they're ready when an interest is added.
+    if (useClaude) void readListings(order, { budgetMs: 0 });
+    return { mode, status: "no-signals", evidence, signals: [] };
+  }
   const signals = await hydrateSignals(args.signals);
   if (!signals.length) {
     return { mode, status: "no-signals", message: "Those interests couldn't be profiled. Try adding them again.", evidence, signals };
   }
   try {
-    const reads = args.readWithClaude === false ? new Map<string, FacetVec>() : await readListings(args.inventory);
+    const reads = useClaude ? await readListings(order, { budgetMs: 1500 }) : new Map<string, FacetVec>();
     for (const place of args.inventory) {
       const rules = profilePlace(place);
       const claude = reads.get(place.id);

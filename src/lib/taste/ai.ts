@@ -121,21 +121,36 @@ Rules:
 
 const readCache = new TtlCache<FacetVec>(7 * 24 * 60 * 60 * 1000, 4000);
 
+/** Places being read right now, so overlapping searches don't ask Claude about the same listing twice. */
+const inFlight = new Set<string>();
+
 /**
- * Claude's facet reading for each listing, by place id. Cached per place for a week; places that
- * aren't cached are read in one batched call with a short timeout, so a slow model never holds up results.
+ * Claude's facet reading for each listing, by place id. Cached per place for a week.
+ *
+ * Uncached places (nearest first, as callers pass them) are read in parallel batches of 30. The caller
+ * waits at most `budgetMs`: whatever has been read by then is used, and the remaining batches keep
+ * filling the cache in the background for the next search. Places without a reading keep their
+ * rule-based profile, so a slow model never holds up results.
  */
-export async function readListings(places: Place[], timeoutMs = 9000): Promise<Map<string, FacetVec>> {
+export async function readListings(places: Place[], { budgetMs = 1500, max = 90 } = {}): Promise<Map<string, FacetVec>> {
   const out = new Map<string, FacetVec>();
   if (!claudeConfigured() || process.env.ELSEWHERE_READ_LISTINGS === "off") return out;
-  const todo: Place[] = [];
+  const todo = places.filter((p) => !readCache.get(p.id) && !inFlight.has(p.id)).slice(0, max);
+  const batches: Place[][] = [];
+  for (let i = 0; i < todo.length; i += 30) batches.push(todo.slice(i, i + 30));
+  if (batches.length) {
+    const all = Promise.all(batches.map(readBatch));
+    await Promise.race([all, new Promise((r) => setTimeout(r, budgetMs))]);
+  }
   for (const p of places) {
     const hit = readCache.get(p.id);
     if (hit) out.set(p.id, hit);
-    else todo.push(p);
   }
-  const batch = todo.slice(0, 60);
-  if (!batch.length) return out;
+  return out;
+}
+
+async function readBatch(batch: Place[]) {
+  for (const p of batch) inFlight.add(p.id);
   const lines = batch.map((p) => `${p.id} | ${p.category.replace("_", " ")} | ${listingText(p).slice(0, 220)}`);
   try {
     const msg = await anthropic().messages.parse(
@@ -146,17 +161,15 @@ export async function readListings(places: Place[], timeoutMs = 9000): Promise<M
         output_config: { effort: "low", format: zodOutputFormat(ListingReads) },
         messages: [{ role: "user", content: `Listings (id | kind | listing):\n${lines.join("\n")}` }],
       },
-      { timeout: timeoutMs },
+      { timeout: 20_000 },
     );
     const known = new Set(batch.map((p) => p.id));
     for (const r of msg.parsed_output?.places ?? []) {
-      if (!known.has(r.id)) continue;
-      const facets = toProfile({ facets: r.facets, keywords: [], categories: [] }).facets;
-      readCache.set(r.id, facets);
-      out.set(r.id, facets);
+      if (known.has(r.id)) readCache.set(r.id, toProfile({ facets: r.facets, keywords: [], categories: [] }).facets);
     }
   } catch (e) {
     console.warn("[taste:read]", (e as Error).message);
+  } finally {
+    for (const p of batch) inFlight.delete(p.id);
   }
-  return out;
 }

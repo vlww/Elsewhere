@@ -45,7 +45,7 @@ export async function runSearch(input: SearchInput): Promise<SearchResult> {
 
   if (input.tasteSignals.length) input.onStatus?.("Connecting your interests to nearby places…");
   const pool = dedupe([...inventory.places, ...(input.extraPlaces ?? [])]);
-  const taste = await culturalEvidence({ signals: input.tasteSignals, inventory: pool });
+  const taste = await culturalEvidence({ signals: input.tasteSignals, inventory: pool, near: location });
 
   input.onStatus?.("Finding places that fit…");
   const candidates = pool.map((place) => ({ place, cultural: taste.evidence.get(place.id) }));
